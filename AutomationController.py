@@ -69,7 +69,10 @@ C_CONFIG_FILE = 'CCAST_.CFG'
 verboseOutput = False
 
 # Controls the failing/continuing of the scripts after a VectorCAST command failes
-globalAbortOnError = False
+globalAbortOnError = True
+
+# Controls the updating of system_test.py
+globalUpdateSystemTestPy = True
 
 # These variables are constructed from the --projectname arg
 coverageProjectName=""
@@ -82,6 +85,7 @@ cfgFileLocation=os.getcwd()
 # This is the location of the vcshell.db file, passed in by the caller
 # It might be the same as the originalWorkingDirectory
 vcshellDBlocation=''
+vcshellDBname='vcshell.db'
 
 
 # This is the make command info from the database
@@ -1327,6 +1331,11 @@ def convertSystemTestLine (originalLine):
     values that we retrieved from the vcshell.db during initialization
     '''
 
+    global globalUpdateSystemTestPy
+    
+    if globalUpdateSystemTestPy is False:
+        return originalLine
+        
     if locationWhereWeRunMakeString in originalLine:
         return commonCommentLine + convertOneLine (originalLine, locationWhereWeRunMakeString, 'r"' + topLevelMakeLocation + '"')
     
@@ -1821,7 +1830,7 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
     global vcWorkArea
     global vcshellDBname
     
-    print "Automation Controller (AutomataionController.py) : 6/27/2018"
+    print "Automation Controller (AutomataionController.py) : 6/28/2018"
 
     vcWorkArea = vcast_workarea
     

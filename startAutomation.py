@@ -157,6 +157,7 @@ def performTask (whatToDo, verbose):
         AutomationController.disableCoverage()
 
     elif whatToDo == 'enable':
+        # Start Analytics for the project
         AutomationController.enableCoverage()  
 
 
@@ -263,7 +264,7 @@ def main():
 if __name__ == "__main__":
     try:
     
-        print "Automation Controller (vcdb2vcm.py) : 6/27/2018"
+        print "Automation Controller (vcdb2vcm.py) : 6/28/2018"
         
         main()
     except Exception, err:

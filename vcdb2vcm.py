@@ -21,7 +21,8 @@ import sys
 from vector.apps.EnvCreator import AutomationController
 
 # exit on error
-AutomationController.abortOnError = True
+AutomationController.globalAbortOnError = True
+AutomationController.globalUpdateSystemTestPy = False
 
 #######################################################################################
 #######################################################################################
@@ -33,16 +34,16 @@ AutomationController.abortOnError = True
 ### Project name is any ASCII string that is used by
 ### VectorCAST as the prefix the various projects
 ### Change this to something meaningful for your project
-PROJECT_NAME=os.environ['emul']
-VCAST_WORKAREA='vcast-workarea-' + PROJECT_NAME
-VCDB_FILENAME=PROJECT_NAME+'.db'
+PROJECT_NAME=os.environ['EMUL']
+VCAST_WORKAREA='vcast-workarea/' + PROJECT_NAME
+VCDB_FILENAME=os.environ['VCDB_FILENAME']
 
 ### VectorCAST Compiler Tag
 ### Must be consistent with the compiler that was used to build the app.
 ### This variable can be set to 
 ###    a. A VectorCAST Compiler Tag: 'GNU_C_46'
 ###    b: The full path to an existing CFG file: /home/VC/CCAST_.CFG
-VCAST_COMPILER_CONFIGURATION='/emc/jlewis/vcast_environments/scripts/master.CCAST_.CFG'
+VCAST_COMPILER_CONFIGURATION=os.getcwd() + '/code_coverage/support/master.CCAST_.CFG'
 
 
 #######################################################################################
@@ -93,7 +94,7 @@ ENV_FILES_USE_VCDB=True
 ### to foo.c.vcast.bak, and an instrumented foo.c is stoed in its place
 ####INSTRUMENT_IN_PLACE=0
 
-INSTRUMENT_IN_PLACE=False
+INSTRUMENT_IN_PLACE=True
 
 ### The VCDB_FLAG_STRING flags will be used as "extra" flags when we call vcdb
 ### to get the unit options.  If nothing is passed we will use the -I and -D flags only
@@ -161,28 +162,13 @@ def matchesFilter(filePath):
         if filter in filePath:
             return True
 
-#def filterFileList (originalList):
-#    '''
-#    This function is a white-list function.  It will spin through
-#    the full file list and "keep" any files that have a pattern
-#    from the filterStringList.  You can easily turn this function
-#    into a black-list function that will omit file patterns.
-#    '''
-#    localFileList = []
-#    if len (FILTER_PATTERNS) > 0:
-#        for file in originalList:
-#            if matchesFilter(file):
-#                localFileList.append(file)
-#    else:
-#        localFileList=originalList[:]      
-#    if 'instrumented_files' in os.environ:
-#        if os.path.isfile(os.environ['instrumented_files']):
-#            print 'Instrumenting from a file list'
-#            localFileList=[os.environ['PWD'] + "/" + s.strip() for s in open(os.environ['instrumented_files'],"r").readlines()]
-#    else:
-#        print 'Instrumenting everything in the database'
-#    return localFileList
-
+# fileterFileList -- implement both a white list and a black list.
+#
+# The use of environment variables is due solely to the lack of
+# implementation of a better method of communication.  Better -- much
+# better -- alternatives exist but would require much more substantial
+# changes to vcdb2vcm.py and startAutomation.py.  That is, the use of
+# environment variables is an expediency and should be eliminated.
 
 def filterFileList (originalList):
 
@@ -190,37 +176,51 @@ def filterFileList (originalList):
     PWD = os.getcwd()
         
     try:
-        WHITE_LIST = [PWD + "/" + s.strip() for s in open(os.environ['instrumented_files'],"r").readlines()]
+        if os.environ['WHITE_LIST']:
+            have_white_list = True
+        else:
+            have_white_list = False
     except KeyError:
-        WHITE_LIST = []
-        print "White list not defined"
-        
+        have_white_list = False
+
     try:
-        BLACK_LIST = [PWD + "/" + s.strip() for s in open(os.environ['BLACK_LIST'],"r").readlines()]
+        if os.environ['BLACK_LIST']:
+            have_black_list = True
+        else:
+            have_black_list = False
     except KeyError:
-        BLACK_LIST = []
+        have_black_list = False
+
+    if have_white_list and have_black_list:
+        # since there are no additional tests to define both is nonsensical
+        raise Exception ('Error both BLACK_LIST and WHITE_LIST defined')
+
+    if not have_white_list and not have_black_list:
+        # neither defined -- no filtering -- return original list
+        print "Neither black list nor white list defined -- no filtering done."
+        return originalList
+
+    # either white list or black list is present
+    
+    if have_black_list:
+        print "Applying black list"
+        BLACK_LIST = [PWD + "/" + s.strip() for s in open(os.environ['BLACK_LIST'],"r").readlines()]
+
+        for file in originalList:
+            if file not in BLACK_LIST:
+                fileList.append(file)
+    else:
         print "Black list not defined"
 
-    for wf in WHITE_LIST:
-        # Pass 1 through the black list looking for file matches
-        for bf in BLACK_LIST:
-             found = False
-             if wf == bf:
-                 print "Black-listed file " + wf + " will not be instrumented"
-                 found = True
-                 if wf in fileList:
-                     fileList.remove(wf)
-                 break
-        if found == False:
-             fileList.append(wf)
-        # Pass 2 through the black list looking for directory matches
-        for bf in BLACK_LIST:
-             if not bf.endswith(".c"):
-                 if wf.startswith(bf):
-                     print "Black-listed directory " + bf + " found. "  +  wf + " will not be instrumented"
-                     if wf in fileList:
-                        fileList.remove(wf)
-                        break
+    if have_white_list:
+        print "Applying white list"
+        WHITE_LIST = [PWD + "/" + s.strip() for s in open(os.environ['WHITE_LIST'],"r").readlines()]
+
+        for file in originalList:
+            if file in WHITE_LIST:
+                fileList.append(file)
+    else:
+        print "White list not defined"
 
     print "Files to be instrumented after applying filters:"
     print '\n'.join(fileList)
@@ -287,7 +287,7 @@ def instrumentInplaceArg ():
 
 def main():
         
-    print "Automation Controller (vcdb2vcm.py) : 6/27/2018"
+    print "Automation Controller (vcdb2vcm.py) : 6/28/2018"
 
     '''
     Calling arguments:
