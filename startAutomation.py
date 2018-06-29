@@ -138,10 +138,10 @@ def performTask (whatToDo, verbose):
 
     elif whatToDo == 'build-db' or whatToDo=='build-vce':
         # Run the vcdb2vcm script to create the project
-        commandToRun = os.path.join (vcInstallDir, 'vpython') + '  vcdb2vcm.py ' + whatToDo + ' ' + vceBaseDirectory + ' ' + str(verbose)
-        print 'Running: ' + commandToRun
-        ret_val = subprocess.call (commandToRun, shell=True)
-        if ret_val != 0:
+        try:
+            vcdb2vcm.main(whatToDo, vceBaseDirectory, verbose)
+        except Exception as e:
+            print e
             sys.exit("STARTAC: vcdb2vcm error")
   
     elif whatToDo == 'vcast':
@@ -264,7 +264,7 @@ def main():
 if __name__ == "__main__":
     try:
     
-        print "Automation Controller (vcdb2vcm.py) : 6/28/2018"
+        print "Automation Controller (vcdb2vcm.py) : 6/29/2018"
         
         main()
     except Exception, err:

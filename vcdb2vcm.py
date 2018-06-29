@@ -285,9 +285,9 @@ def instrumentInplaceArg ():
     else:
         return ''
 
-def main():
+def main(whatToDo='build-db', vceBaseDirectory="", verbose=False):
         
-    print "Automation Controller (vcdb2vcm.py) : 6/28/2018"
+    print "Automation Controller (vcdb2vcm.py) : 6/29/2018"
 
     '''
     Calling arguments:
@@ -295,14 +295,11 @@ def main():
         build-vce   root-directory   True|False
     '''
     
-    if len (sys.argv) < 2:
-        print 'This script must be called with and arg of "build-db" or "build-vce"'
-    elif sys.argv[1]=='build-vce':
+    if whatToDo=='build-vce':
         AutomationController.vcmFromEnvironments ( \
-            projectName=PROJECT_NAME, rootDirectory=sys.argv[2],\
-            statusfile=PROJECT_NAME+'-automation-status.txt', verbose=sys.argv[3])
-    elif sys.argv[1]=='build-db':
-    
+            projectName=PROJECT_NAME, rootDirectory=vceBaseDirectory,\
+            statusfile=PROJECT_NAME+'-automation-status.txt',verbose=verbose)
+    elif whatToDo=='build-db':
         try:
             AutomationController.automationController (projectName=PROJECT_NAME, \
                  vcshellLocation=VCSHELL_DB_LOCATION, \
@@ -313,19 +310,16 @@ def main():
                  inplace=instrumentInplaceArg(), \
                  vcdbFlagString=VCAST_VCDB_FLAG_STRING, \
                  tcTimeOut=TEST_TIMEOUT, includePathOverRide=INCLUDE_PATH_OVERRIDE, \
-                 envFileEditor=envFileEditor, statusfile=PROJECT_NAME+'-automation-status.txt', verbose=sys.argv[2],
+                 envFileEditor=envFileEditor, statusfile=PROJECT_NAME+'-automation-status.txt', verbose=verbose,
                  filesOfInterest=FILES_OF_INTEREST,vcast_workarea=VCAST_WORKAREA, vcDbName=VCDB_FILENAME, envFilesUseVcdb=ENV_FILES_USE_VCDB)
         except Exception as e:
             print "VCDB2VCM: Raising exception"
-            sys.exit(-1)
-                 
+            print e
+            raise (e)
+            
+    else:
+        raise("Invalid whatToDo call to vcdb2vcm.main call")
+             
+             
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception, err:
-        # No need to output a stack trace if we failed for a vcast reason.
-        if str(err) == 'VectorCAST command failed' or str(err)=='FLEXlm error' or str(err)=='VCAST Termination Error':
-            pass
-        else:
-            print Exception, err
-            print traceback.format_exc()
+    raise("Call vcdb2vcm.py through startAutomation.py")

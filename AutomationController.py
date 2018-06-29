@@ -1830,7 +1830,7 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
     global vcWorkArea
     global vcshellDBname
     
-    print "Automation Controller (AutomataionController.py) : 6/28/2018"
+    print "Automation Controller (AutomataionController.py) : 6/29/2018"
 
     vcWorkArea = vcast_workarea
     
