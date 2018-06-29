@@ -264,7 +264,7 @@ def main():
 if __name__ == "__main__":
     try:
     
-        print "Automation Controller (vcdb2vcm.py) : 6/29/2018"
+        print "Automation Controller (startAutomation.py) : 6/29/2018"
         
         main()
     except Exception, err:
