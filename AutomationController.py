@@ -150,7 +150,7 @@ def fatalError (errorString):
     
     
     
-def runVCcommand(command, abortOnError=globalAbortOnError):
+def runVCcommand(command, abortOnError):
     '''
     Run Command with subprocess.Popen and return status
     If the fatal flag is true, we abort the process, if 
@@ -218,7 +218,7 @@ def readCFGoption (optionName):
     CCAST_.CFG file and return the value.  If the option is not
     found or there is not a CCAST_.CFG file we return ""
     '''
-    optionValue, exitCode = runVCcommand ('vcutil -lc get_option ' + optionName)
+    optionValue, exitCode = runVCcommand ('vcutil -lc get_option ' + optionName, globalAbortOnError)
     return optionValue.rstrip('\n')
        
 def readAdaCFGoption (optionName):
@@ -269,7 +269,7 @@ def unInstrumentSourceFiles():
         # if there is no existing file list, just call un-instrument
         fullCommand =  'vpython '
         fullCommand += pathToUnInstrumentScript
-        stdOut, exitCode = runVCcommand (fullCommand)
+        stdOut, exitCode = runVCcommand (fullCommand, globalAbortOnError)
     
     
 def filterTheFileList (fullFileList):
@@ -340,7 +340,7 @@ def initializeCFGfile (compilerCFG, vcdbFlagString):
     # Now setup any command over-rides that are requested by the configuration
     # By doing the option changes here we are setting the value in the base CCAST_.CFG
     # which gets copied everywhere in the vcast-workarea.
-    stdOut, exitCode = runVCcommand ('clicast -lc option vcast_vcdb_flag_string ' + vcdbFlagString)
+    stdOut, exitCode = runVCcommand ('clicast -lc option vcast_vcdb_flag_string ' + vcdbFlagString, globalAbortOnError)
     
     
 def getCFGfile ():
@@ -371,6 +371,11 @@ def getCFGfile ():
 
 def buildWorkarea():
 
+    global vcCoverDirectory
+    global coverageProjectName
+    global vcManageDirectory
+    global manageProjectName
+
     addToSummaryStatus ('   checking for work area ...')
     workAreaPath = os.path.join (os.getcwd(), vcWorkArea)
     
@@ -380,15 +385,28 @@ def buildWorkarea():
     addToSummaryStatus ('Checking for old work-area ...')
     oldPath = os.path.join (workAreaPath, 'vc_manage')
     if os.path.isdir (oldPath):
-       addToSummaryStatus ('   removing old work-area instance')
-       shutil.rmtree (workAreaPath)
+        addToSummaryStatus ('   removing old work-area instance')
+        shutil.rmtree (workAreaPath)
  
+    createWorkspace = True
+    
     # If we already have a workarea
     if os.path.isdir (workAreaPath):
-       addToSummaryStatus ('   found existing work area')
-       os.chdir (vcWorkArea)
-       projectMode = 'update'
-    else: # create the workarea
+        fullCoverProject = os.path.join(vcCoverDirectory, coverageProjectName)
+        fullManageProject = os.path.join(vcManageDirectory, manageProjectName)
+
+        # check to make sure the .vcp and .vcm files are present
+        if os.path.isfile (fullCoverProject) and os.path.isfile(fullManageProject):
+            # if they are, use them and update 
+            addToSummaryStatus ('   found existing work area')
+            os.chdir (vcWorkArea)
+            projectMode = 'update'
+            createWorkspace = False
+        else:
+            addToSummaryStatus ('   found partial work area -- removing and staring new')
+            shutil.rmtree (workAreaPath)
+    
+    if createWorkspace: # create the workarea
         projectMode = 'new'
         addToSummaryStatus ('   creating new work area ...')
         addToSummaryStatus ('   location: ' + os.getcwd())
@@ -398,7 +416,7 @@ def buildWorkarea():
         os.mkdir (vcManageDirectory)
         os.mkdir (vcScriptsDirectory)
         os.mkdir (vcHistoryDirectory)
-        
+
     return projectMode
     
 
@@ -437,6 +455,7 @@ def initialize (compilerCFG, filterFunction, vcdbFlagString, filesOfInterest):
     global topLevelMakeLocation
     global applicationList   
     global vcshellDBname
+    global globalAbortOnError
     
     
     projectMode = ''
@@ -519,18 +538,18 @@ def initialize (compilerCFG, filterFunction, vcdbFlagString, filesOfInterest):
             addToSummaryStatus ('   found ' + str(len (listOfPaths)) + ' source paths')   
             
         # Read the top level make command and directory from the database
-        cmdOutput, exitCode = runVCcommand ('vcdb ' + vcshellDBarg() + ' gettopdir')
+        cmdOutput, exitCode = runVCcommand ('vcdb ' + vcshellDBarg() + ' gettopdir', globalAbortOnError)
         if exitCode==0:
             topLevelMakeLocation=cmdOutput.strip('\n')
         else:
             topLevelMakeLocation=''
             
-        cmdOutput, exitCode = runVCcommand ('vcdb ' + vcshellDBarg() + ' gettopcmd')
+        cmdOutput, exitCode = runVCcommand ('vcdb ' + vcshellDBarg() + ' gettopcmd', globalAbortOnError)
         if exitCode==0:
             topLevelMakeCommand = cmdOutput.strip('\n')
         else:
             topLevelMakeCommand=''
-        stdOut, exitCode = runVCcommand (command='vcdb ' + vcshellDBarg() + ' getapps')
+        stdOut, exitCode = runVCcommand ('vcdb ' + vcshellDBarg() + ' getapps', globalAbortOnError)
         if 'Apps Not found' in stdOut:
             applicationList = []
         else:
@@ -628,7 +647,7 @@ def runLintAnalysis ():
     
     try:      
         os.chdir (os.path.join (originalWorkingDirectory, vcWorkArea, vcCoverDirectory ))
-        stdOut, exitCode = runVCcommand ('clicast -e ' + coverageProjectName + ' cover tools lint_analyze')
+        stdOut, exitCode = runVCcommand ('clicast -e ' + coverageProjectName + ' cover tools lint_analyze', globalAbortOnError)
         
         endMS = time.time()*1000.0
         addToSummaryStatus ('   complete (' + getTimeString(endMS-startMS) + ')')
@@ -669,7 +688,7 @@ def instrumentFiles (coverageType, listOfMainFiles):
         # We now use a clicast command to do this.  
         # Previously we used a py function: appendCoverIOfileToMainFiles
         for file in listOfMainFiles:
-            stdOut, exitCode = runVCcommand ('clicast -e' + coverageProjectName + ' cover append_cover_io true -u' + file)
+            stdOut, exitCode = runVCcommand ('clicast -e' + coverageProjectName + ' cover append_cover_io true -u' + file, globalAbortOnError)
         
                
         # Call the instrumentor for any new files
@@ -680,12 +699,12 @@ def instrumentFiles (coverageType, listOfMainFiles):
         
         # We don't want to overwhelm the command line if we have 10k files for example
         if len (listOfFilesString) > 1000:
-           stdOut, exitCode = runVCcommand ('clicast -e' + coverageProjectName + ' cover instrument ' + coverageType)
+           stdOut, exitCode = runVCcommand ('clicast -e' + coverageProjectName + ' cover instrument ' + coverageType, globalAbortOnError)
         else:
             # Run instrumentation on the new files ...
-            stdOut, exitCode = runVCcommand ('clicover instrument_' + coverageType.replace ('+', '_') + ' ' + coverageProjectName + ' ' + listOfFilesString)
+            stdOut, exitCode = runVCcommand ('clicover instrument_' + coverageType.replace ('+', '_') + ' ' + coverageProjectName + ' ' + listOfFilesString, globalAbortOnError)
             # Run incremental re-instrument to pick up any source changes
-            stdOut, exitCode = runVCcommand ('clicast -e' + coverageProjectName + ' cover source incremental_reinstrument')
+            stdOut, exitCode = runVCcommand ('clicast -e' + coverageProjectName + ' cover source incremental_reinstrument', globalAbortOnError)
             
             
         endMS = time.time()*1000.0
@@ -869,7 +888,7 @@ def buildEnvScripts (coverageType, includePathOverRide, envFileEditor, vcdbFlagS
                 # in this case, this function call with return false
                 elif setTypeCommandNeeded(dir):
                     fullCommand =  'vcdb ' + vcshellDBarg(force=True) + ' setpathtype ' + dir[0] + ' ' + dir[1].upper()
-                    stdOut, exitCode = runVCcommand (fullCommand)
+                    stdOut, exitCode = runVCcommand (fullCommand, globalAbortOnError)
 
                 else:
                     # if we get here then this is a new directory so save it to the list along with the type
@@ -913,7 +932,7 @@ def buildEnvScripts (coverageType, includePathOverRide, envFileEditor, vcdbFlagS
                     
                 fullCommand =  'vpython '
                 fullCommand += pathToEnvCreateScript + commandArgs
-                stdOut, exitCode = runVCcommand (fullCommand)
+                stdOut, exitCode = runVCcommand (fullCommand, globalAbortOnError)
                 
                 # delete the temp-file
                 os.remove (tempFileName)
@@ -950,7 +969,7 @@ def runManageCommands(project, commands):
         
     # We do not make any of the manage commands fatal ... the project create is done
     # by using runVCcommand directly
-    stdOut, exitCode = runVCcommand('manage -p %s --script %s' % (project, manageScriptName))  
+    stdOut, exitCode = runVCcommand('manage -p %s --script %s' % (project, manageScriptName), globalAbortOnError)  
     os.remove (manageScriptName) 
     
     return stdOut 
@@ -963,7 +982,7 @@ def platformLevelString ():
     '''
     global clicastVersion
     if not clicastVersion:
-        clicastVersion, exitCode = runVCcommand('clicast --version')
+        clicastVersion, exitCode = runVCcommand('clicast --version', globalAbortOnError)
     if 'Version 6.' in clicastVersion:
         if platform.system()=='Windows':
             return '--level Source/Windows'
@@ -1529,13 +1548,13 @@ def enableCoverage():
     manageProjectName = findManageProject()
     if manageProjectName!=manageProjectNotFound:
         coverProjectName = manageProjectName.split ('_')[0] + '_coverage'
-        stdOut, exitCode = runVCcommand ('manage -p' + manageProjectName + ' -e ' + coverProjectName + ' --enable-instrument-in-place')
+        stdOut, exitCode = runVCcommand ('manage -p' + manageProjectName + ' -e ' + coverProjectName + ' --enable-instrument-in-place', globalAbortOnError)
 
         # We have to do a reinstrument action to pick up the changes, because the enable simply
         # copies the new foo.c file onto the foo.c.vcast.bak, and relies on the incremental_reinstrument to
         # compare the files and decide what needs to be re-instrumented.
         coverProjectName = findCoverProject()
-        stdOut, exitCode = runVCcommand ('clicast -e ' + coverProjectName + ' cover source incremental_reinstrument')
+        stdOut, exitCode = runVCcommand ('clicast -e ' + coverProjectName + ' cover source incremental_reinstrument', globalAbortOnError)
         # Change back to original dir
         os.chdir (originalWorkingDirectory)
     
@@ -1547,7 +1566,7 @@ def disableCoverage():
     manageProjectName = findManageProject()
     if manageProjectName!=manageProjectNotFound:
         coverProjectName = manageProjectName.split ('_')[0] + '_coverage'
-        stdOut, exitCode = runVCcommand ('manage -p' + manageProjectName + ' -e' + coverProjectName + ' --disable-instrument-in-place')
+        stdOut, exitCode = runVCcommand ('manage -p' + manageProjectName + ' -e' + coverProjectName + ' --disable-instrument-in-place', globalAbortOnError)
         # Change back to original dir
         os.chdir (originalWorkingDirectory)
 
@@ -1738,7 +1757,7 @@ def buildListOfMainFilesFromDB():
     addToSummaryStatus ('Computing insert locations for c_cover_io.c ...')
     returnList = []
         
-    stdOut, exitCode = runVCcommand (command='vcdb ' + vcshellDBarg(force=True) + ' getapps') 
+    stdOut, exitCode = runVCcommand ('vcdb ' + vcshellDBarg(force=True) + ' getapps', globalAbortOnError) 
     if 'Apps Not found' in stdOut:
         applicationList = []
     else:
@@ -1750,7 +1769,7 @@ def buildListOfMainFilesFromDB():
         # Build a list of sets.  One file set for each application
         appFileLists = []
         for app in applicationList: 
-            stdOut, exitCode = runVCcommand ('vcdb ' + vcshellDBarg(force=True) + ' --app=' + app + ' getappfiles') 
+            stdOut, exitCode = runVCcommand ('vcdb ' + vcshellDBarg(force=True) + ' --app=' + app + ' getappfiles', globalAbortOnError) 
             listOfAppFiles = stdOut.rstrip('\n').split('\n')
             
             # but only consider files that are in the cover project
@@ -1830,7 +1849,7 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
     global vcWorkArea
     global vcshellDBname
     
-    print "Automation Controller (AutomataionController.py) : 6/29/2018"
+    print "Automation Controller (AutomataionController.py) : 7/18/2018"
 
     vcWorkArea = vcast_workarea
     
@@ -1882,13 +1901,13 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
 
         # run vcutil to parallel instrument
         print "Running vcutil from : " + os.getcwd()
-        stdOut, exitCode = runVCcommand ('vcutil instrument --coverage=' + coverageType)
+        stdOut, exitCode = runVCcommand ('vcutil instrument --coverage=' + coverageType, globalAbortOnError)
 
         print ("Copying CCAST_.CFG file")
         shutil.copy("CCAST_.CFG",os.path.join (originalWorkingDirectory, vcWorkArea, vcCoverDirectory , "CCAST_.CFG"))
 
         # run command to build the manage project
-        stdOut, exitCode = runVCcommand ('clicast cover environment build ' +  os.path.join (vcWorkArea, vcCoverDirectory , coverageProjectName) + ' vc-inst')
+        stdOut, exitCode = runVCcommand ('clicast cover environment build ' +  os.path.join (vcWorkArea, vcCoverDirectory , coverageProjectName) + ' vc-inst', globalAbortOnError)
 
         os.chdir(os.path.join (originalWorkingDirectory, vcWorkArea, vcCoverDirectory))
         if len(listOfMainFiles)==1 and listOfMainFiles[0]==parameterNotSetString:
@@ -1896,7 +1915,7 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
         else:
             localListOfMainFiles = listOfMainFiles
         for file in listOfMainFiles:
-            stdOut, exitCode = runVCcommand ('clicast -e' + coverageProjectName + ' cover append_cover_io true -u' + file)
+            stdOut, exitCode = runVCcommand ('clicast -e' + coverageProjectName + ' cover append_cover_io true -u' + file, globalAbortOnError)
 
         os.chdir(startCwd)
 

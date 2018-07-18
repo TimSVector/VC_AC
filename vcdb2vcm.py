@@ -287,7 +287,7 @@ def instrumentInplaceArg ():
 
 def main(whatToDo='build-db', vceBaseDirectory="", verbose=False):
         
-    print "Automation Controller (vcdb2vcm.py) : 6/29/2018"
+    print "Automation Controller (vcdb2vcm.py) : 7/18/2018"
 
     '''
     Calling arguments:
