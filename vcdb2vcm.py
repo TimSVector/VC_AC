@@ -58,7 +58,7 @@ VCAST_COMPILER_CONFIGURATION=os.getcwd() + '/code_coverage/support/master.CCAST_
 ### You can set these variables to 'max' or 'all' to process all files from the vcshell.db
 ### If you only want to do System Testing set MAXIMUM_FILES_TO_UNIT_TEST to 0
 ### If you only want to do Unit Testing, set MAXIMUM_FILES_TO_SYSTEM_TEST to 0
-### MAXIMUM_FILES_TO_SYSTEM_TEST=0
+MAXIMUM_FILES_TO_SYSTEM_TEST=0
 MAXIMUM_FILES_TO_UNIT_TEST=0
 MAXIMUM_UNIT_TESTS_TO_BUILD=0
 
@@ -285,7 +285,7 @@ def instrumentInplaceArg ():
     else:
         return ''
 
-def main(whatToDo='build-db', vceBaseDirectory="", verbose=False):
+def main(whatToDo='build-db', vceBaseDirectory="", verbose=False, parallel=False):
         
     print "Automation Controller (vcdb2vcm.py) : 7/18/2018"
 

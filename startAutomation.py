@@ -71,6 +71,9 @@ def setupArgs (toolName):
     parser.add_argument ('--verbose', dest='verbose', action='store_true', default=False,
                            help='Root path to VectorCAST environments')    
 
+    parser.add_argument ('--parallel', dest='parallel', action='store_true', default=False,
+                           help='Use parallel instrumentor')    
+
     return parser
 
 
@@ -233,6 +236,10 @@ def main():
     global vceBaseDirectory
     
     parser = setupArgs ('startAutomation') 
+    
+    if parser.parallel:
+        vcdb2vcm.MAXIMUM_FILES_TO_SYSTEM_TEST=-1
+
     # Read the arguments
     try:
         args = parser.parse_args()
