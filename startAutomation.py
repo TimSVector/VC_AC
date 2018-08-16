@@ -73,6 +73,9 @@ def setupArgs (toolName):
     parser.add_argument ('--parallel', dest='parallel', action='store_true', default=False,
                            help='Instrument in parallel')    
 
+    parser.add_argument ('--parallel-in-place', dest='parallel_use_in_place', action='store_true', default=False,
+                           help='Instrument in parallel')    
+
     parser.add_argument ('--parallel-jobs', dest='parallel_jobs',  help='Instrument in parallel')    
 
     parser.add_argument ('--parallel-destination', dest='parallel_destination', help='Instrument in parallel')    
@@ -254,6 +257,9 @@ def main():
 
     if args.parallel_destination:
         AutomationController.useParallelDestination = args.parallel_destination
+
+    if args.parallel_use_in_place:
+        AutomationController.useParallelUseInPlace = True
 
     if args.interactive:
         interactiveMode(args.verbose)

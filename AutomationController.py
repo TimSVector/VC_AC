@@ -112,6 +112,7 @@ summaryStatusFileHandle = 0
 useParallelInstrumentation = False
 useParallelJobs = ""
 useParallelDestination = ""
+useParallelUseInPlace = False
 
 def addToSummaryStatus (message):
     '''
@@ -1855,6 +1856,7 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
     global useParallelInstrumentation
     global useParallelJobs
     global useParallelDestionation
+    global useParallelUseInPlace
     
     print "Automation Controller (AutomataionController.py) :  8/16/2018"
 
@@ -1927,6 +1929,10 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
         stdOut, exitCode = runVCcommand ('clicast cover environment build ' +  os.path.join (vcWorkArea, vcCoverDirectory , coverageProjectName) + vc_inst_dir, globalAbortOnError)
 
         os.chdir(os.path.join (originalWorkingDirectory, vcWorkArea, vcCoverDirectory))
+
+        if useParallelUseInPlace:
+            stdOut, exitCode = runVCcommand ('clicast -e' + coverageProjectName + ' cover environment enable_instrumentation', globalAbortOnError)
+
         if len(listOfMainFiles)==1 and listOfMainFiles[0]==parameterNotSetString:
             localListOfMainFiles = buildListOfMainFilesFromDB()
         else:
