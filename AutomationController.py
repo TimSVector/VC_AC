@@ -1856,7 +1856,7 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
     global useParallelJobs
     global useParallelDestionation
     
-    print "Automation Controller (AutomataionController.py) : 7/18/2018"
+    print "Automation Controller (AutomataionController.py) :  8/16/2018"
 
     vcWorkArea = vcast_workarea
     
