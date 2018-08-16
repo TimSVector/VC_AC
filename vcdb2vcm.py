@@ -45,7 +45,6 @@ VCDB_FILENAME=os.environ['VCDB_FILENAME']
 ###    b: The full path to an existing CFG file: /home/VC/CCAST_.CFG
 VCAST_COMPILER_CONFIGURATION=os.getcwd() + '/code_coverage/support/master.CCAST_.CFG'
 
-
 #######################################################################################
 # The following set of options will take care of most normal use cases
 
@@ -58,7 +57,7 @@ VCAST_COMPILER_CONFIGURATION=os.getcwd() + '/code_coverage/support/master.CCAST_
 ### You can set these variables to 'max' or 'all' to process all files from the vcshell.db
 ### If you only want to do System Testing set MAXIMUM_FILES_TO_UNIT_TEST to 0
 ### If you only want to do Unit Testing, set MAXIMUM_FILES_TO_SYSTEM_TEST to 0
-MAXIMUM_FILES_TO_SYSTEM_TEST=0
+### MAXIMUM_FILES_TO_SYSTEM_TEST=0
 MAXIMUM_FILES_TO_UNIT_TEST=0
 MAXIMUM_UNIT_TESTS_TO_BUILD=0
 
@@ -108,8 +107,8 @@ LIST_OF_MAIN_FILES = [AutomationController.parameterNotSetString]
 # If you want to manually choose the files where c_cover_io is inserted do this:
 # LIST_OF_MAIN_FILES = ['firstMain.c', 'secondMain.c']
 # To disable the insert of the c_cover_io.c completely, do this:
-# LIST_OF_MAIN_FILES = []
-LIST_OF_MAIN_FILES = ['70_inlines.c']
+LIST_OF_MAIN_FILES = []
+# LIST_OF_MAIN_FILES = ['70_inlines.c']
 
 
 ### You can optionally run Lint analysis on the files in the project
@@ -197,7 +196,7 @@ def filterFileList (originalList):
 
     if not have_white_list and not have_black_list:
         # neither defined -- no filtering -- return original list
-        print "Neither black list nor white list defined -- no filtering done."
+        #print "Neither black list nor white list defined -- no filtering done."
         return originalList
 
     # either white list or black list is present
@@ -285,7 +284,7 @@ def instrumentInplaceArg ():
     else:
         return ''
 
-def main(whatToDo='build-db', vceBaseDirectory="", verbose=False, parallel=False):
+def main(whatToDo='build-db', vceBaseDirectory="", verbose=False):
         
     print "Automation Controller (vcdb2vcm.py) : 7/18/2018"
 

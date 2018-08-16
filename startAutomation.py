@@ -17,7 +17,6 @@ import shutil
 import subprocess
 import traceback
 import sys
-
 from vector.apps.EnvCreator import AutomationController
 import vcdb2vcm
 
@@ -72,7 +71,11 @@ def setupArgs (toolName):
                            help='Root path to VectorCAST environments')    
 
     parser.add_argument ('--parallel', dest='parallel', action='store_true', default=False,
-                           help='Use parallel instrumentor')    
+                           help='Instrument in parallel')    
+
+    parser.add_argument ('--parallel-jobs', dest='parallel_jobs',  help='Instrument in parallel')    
+
+    parser.add_argument ('--parallel-destination', dest='parallel_destination', help='Instrument in parallel')    
 
     return parser
 
@@ -236,16 +239,22 @@ def main():
     global vceBaseDirectory
     
     parser = setupArgs ('startAutomation') 
-    
-    if parser.parallel:
-        vcdb2vcm.MAXIMUM_FILES_TO_SYSTEM_TEST=-1
-
     # Read the arguments
     try:
         args = parser.parse_args()
     except SystemExit:
         raise
         
+    if args.parallel:
+        AutomationController.useParallelInstrumentation = True
+        print "setting up for parallel instrumentation"
+
+    if args.parallel_jobs:
+        AutomationController.useParallelJobs = args.parallel_jobs
+
+    if args.parallel_destination:
+        AutomationController.useParallelDestination = args.parallel_destination
+
     if args.interactive:
         interactiveMode(args.verbose)
     elif args.command == 'make' and len (args.makecmd)==0:

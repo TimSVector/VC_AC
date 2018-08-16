@@ -108,7 +108,10 @@ listOfPaths = []
 # Contains the status message to display at the end of the run
 summaryStatusFileHandle = 0
 
-
+# Information for parallel instrumentation
+useParallelInstrumentation = False
+useParallelJobs = ""
+useParallelDestination = ""
 
 def addToSummaryStatus (message):
     '''
@@ -410,7 +413,8 @@ def buildWorkarea():
         projectMode = 'new'
         addToSummaryStatus ('   creating new work area ...')
         addToSummaryStatus ('   location: ' + os.getcwd())
-        os.mkdir (vcWorkArea)
+        #os.mkdir (vcWorkArea)
+        os.makedirs (vcWorkArea)
         os.chdir (vcWorkArea)
         os.mkdir (vcCoverDirectory)
         os.mkdir (vcManageDirectory)
@@ -1644,7 +1648,7 @@ def vcmFromEnvironments (projectName, rootDirectory, statusfile, verbose):
     global manageProjectName
     global coverageProjectName
     
-    verboseOutput = (verbose=='True')
+    verboseOutput = verbose
     manageProjectName   = projectName + '_project'
     
     # TBD kind of a kludge, but it might be ok
@@ -1848,12 +1852,14 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
     global vcshellDBlocation
     global vcWorkArea
     global vcshellDBname
+    global useParallelInstrumentation
+    global useParallelJobs
+    global useParallelDestionation
     
     print "Automation Controller (AutomataionController.py) : 7/18/2018"
 
     vcWorkArea = vcast_workarea
     
-    useParallelInstrumentation = False
     vcshellDBname = vcDbName     
     
     if os.path.isfile (os.path.join (vcshellLocation, vcshellDBname)):
@@ -1868,7 +1874,7 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
     addToSummaryStatus (toolName)
     startMS = time.time()*1000.0   
 
-    verboseOutput = (verbose=='True')
+    verboseOutput = verbose
     
     sectionBreak ('')
     addToSummaryStatus ('Validating configuration choices ...')
@@ -1876,10 +1882,9 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
     if coverageType not in validCoverageTypes:
         print '    Invalid VCAST_COVERAGE_TYPE requested: "' + coverageType + '", using coverage type none'
         coverageType = 'none'
-    if maxToSystemTest == -1:
+    if useParallelInstrumentation:
         print '    Using parallel instrumentation'
         maxToSystemTest = sys.maxint
-        useParallelInstrumentation = True
     elif maxToSystemTest < 0:
         print '    Invalid MAXIMUM_FILES_TO_SYSTEM requested, using 0'
         maxToSystemTest = 0
@@ -1901,13 +1906,25 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
 
         # run vcutil to parallel instrument
         print "Running vcutil from : " + os.getcwd()
-        stdOut, exitCode = runVCcommand ('vcutil instrument --coverage=' + coverageType, globalAbortOnError)
+        if useParallelJobs:
+           para_jobs_str =  " --jobs=" + useParallelJobs
+        else:
+           para_jobs_str = " "
+
+        if useParallelDestination:
+           para_dest_str =  " --destination_dir=" + useParallelDestination
+           vc_inst_dir = " " + useParallelDestination
+        else:
+           para_dest_str = " "
+           vc_inst_dir = " vc-inst"
+
+        stdOut, exitCode = runVCcommand ('vcutil instrument --all --coverage=' + coverageType + " --db="+ vcshellDBname + para_jobs_str + para_dest_str, globalAbortOnError)
 
         print ("Copying CCAST_.CFG file")
         shutil.copy("CCAST_.CFG",os.path.join (originalWorkingDirectory, vcWorkArea, vcCoverDirectory , "CCAST_.CFG"))
 
         # run command to build the manage project
-        stdOut, exitCode = runVCcommand ('clicast cover environment build ' +  os.path.join (vcWorkArea, vcCoverDirectory , coverageProjectName) + ' vc-inst', globalAbortOnError)
+        stdOut, exitCode = runVCcommand ('clicast cover environment build ' +  os.path.join (vcWorkArea, vcCoverDirectory , coverageProjectName) + vc_inst_dir, globalAbortOnError)
 
         os.chdir(os.path.join (originalWorkingDirectory, vcWorkArea, vcCoverDirectory))
         if len(listOfMainFiles)==1 and listOfMainFiles[0]==parameterNotSetString:
