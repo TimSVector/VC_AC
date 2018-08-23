@@ -162,6 +162,8 @@ def runVCcommand(command, abortOnError):
     '''
     
     global verboseOutput
+    if verboseOutput:
+        print "CWD: " +  os.getcwd() + " => " + command
 
     cmdOutput = ''
     commandToRun = os.path.join (vcInstallDir, command)
@@ -1858,7 +1860,7 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
     global useParallelDestionation
     global useParallelUseInPlace
     
-    print "Automation Controller (AutomataionController.py) :  8/16/2018"
+    print "Automation Controller (AutomataionController.py) : 8/23/2018"
 
     vcWorkArea = vcast_workarea
     
@@ -1916,6 +1918,8 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
         if useParallelDestination:
            para_dest_str =  " --destination_dir=" + useParallelDestination
            vc_inst_dir = " " + useParallelDestination
+           if not os.path.isdir(useParallelDestination):
+              os.makedirs (useParallelDestination)
         else:
            para_dest_str = " "
            vc_inst_dir = " vc-inst"
@@ -1924,9 +1928,10 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
 
         print ("Copying CCAST_.CFG file")
         shutil.copy("CCAST_.CFG",os.path.join (originalWorkingDirectory, vcWorkArea, vcCoverDirectory , "CCAST_.CFG"))
+        os.chdir(os.path.join (originalWorkingDirectory, vcWorkArea, vcCoverDirectory))
 
         # run command to build the manage project
-        stdOut, exitCode = runVCcommand ('clicast cover environment build ' +  os.path.join (vcWorkArea, vcCoverDirectory , coverageProjectName) + vc_inst_dir, globalAbortOnError)
+        stdOut, exitCode = runVCcommand ('clicast cover environment build ' +  coverageProjectName + vc_inst_dir, globalAbortOnError)
 
         os.chdir(os.path.join (originalWorkingDirectory, vcWorkArea, vcCoverDirectory))
 
