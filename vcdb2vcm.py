@@ -35,7 +35,7 @@ AutomationController.globalUpdateSystemTestPy = False
 ### VectorCAST as the prefix the various projects
 ### Change this to something meaningful for your project
 PROJECT_NAME=os.environ['EMUL']
-VCAST_WORKAREA='/home/tms/4jeff/vcast-workarea/' + PROJECT_NAME
+VCAST_WORKAREA=os.environ['VCAST_VMAX_SRC_BASE'] + '/vcast-workarea/' + PROJECT_NAME
 VCDB_FILENAME=os.environ['VCDB_FILENAME']
 
 ### VectorCAST Compiler Tag
@@ -43,7 +43,7 @@ VCDB_FILENAME=os.environ['VCDB_FILENAME']
 ### This variable can be set to 
 ###    a. A VectorCAST Compiler Tag: 'GNU_C_46'
 ###    b: The full path to an existing CFG file: /home/VC/CCAST_.CFG
-VCAST_COMPILER_CONFIGURATION='/home/tms/4jeff/code_coverage/support/master.CCAST_.CFG'
+VCAST_COMPILER_CONFIGURATION=os.environ['VCAST_VMAX_SRC_BASE'] + '/code_coverage/support/master.CCAST_.CFG'
 
 #######################################################################################
 # The following set of options will take care of most normal use cases
@@ -286,7 +286,7 @@ def instrumentInplaceArg ():
 
 def main(whatToDo='build-db', vceBaseDirectory="", verbose=False):
         
-    print "Automation Controller (vcdb2vcm.py) : 8/23/2018"
+    print "Automation Controller (vcdb2vcm.py) :8/24/2018"
 
     '''
     Calling arguments:

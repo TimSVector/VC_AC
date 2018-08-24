@@ -286,7 +286,7 @@ def main():
 if __name__ == "__main__":
     try:
     
-        print "Automation Controller (startAutomation.py) : 8/23/2018"
+        print "Automation Controller (startAutomation.py) : 8/24/2018"
         
         main()
     except Exception, err:

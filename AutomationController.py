@@ -398,8 +398,8 @@ def buildWorkarea():
     
     # If we already have a workarea
     if os.path.isdir (workAreaPath):
-        fullCoverProject = os.path.join(vcCoverDirectory, coverageProjectName)
-        fullManageProject = os.path.join(vcManageDirectory, manageProjectName)
+        fullCoverProject  = os.path.join(workAreaPath, vcCoverDirectory, coverageProjectName+".vcp")
+        fullManageProject = os.path.join(workAreaPath, vcManageDirectory, manageProjectName+".vcm")
 
         # check to make sure the .vcp and .vcm files are present
         if os.path.isfile (fullCoverProject) and os.path.isfile(fullManageProject):
@@ -409,15 +409,23 @@ def buildWorkarea():
             projectMode = 'update'
             createWorkspace = False
         else:
-            addToSummaryStatus ('   found partial work area -- removing and staring new')
-            shutil.rmtree (workAreaPath)
+            addToSummaryStatus ("   found partial work area -- removing VectorCAST directories -- starting new")
+            dirs = [vcCoverDirectory, vcManageDirectory, vcScriptsDirectory, vcHistoryDirectory]
+            for dir in dirs:
+                fullDir = os.path.join(workAreaPath,dir)
+                print "trying to delete: " + fullDir
+                if os.path.isdir(fullDir):
+                    shutil.rmtree (fullDir)
     
     if createWorkspace: # create the workarea
         projectMode = 'new'
         addToSummaryStatus ('   creating new work area ...')
         addToSummaryStatus ('   location: ' + os.getcwd())
         #os.mkdir (vcWorkArea)
-        os.makedirs (vcWorkArea)
+        try:    
+            os.makedirs (vcWorkArea)
+        except:
+            pass
         os.chdir (vcWorkArea)
         os.mkdir (vcCoverDirectory)
         os.mkdir (vcManageDirectory)
@@ -1860,7 +1868,7 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
     global useParallelDestionation
     global useParallelUseInPlace
     
-    print "Automation Controller (AutomataionController.py) : 8/23/2018"
+    print "Automation Controller (AutomataionController.py) : 8/24/2018"
 
     vcWorkArea = vcast_workarea
     
@@ -1931,6 +1939,9 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
         os.chdir(os.path.join (originalWorkingDirectory, vcWorkArea, vcCoverDirectory))
 
         # run command to build the manage project
+        if os.path.isdir(coverageProjectName):
+           print "Removing existing working directory"
+           shutil.rmtree(coverageProjectName)
         stdOut, exitCode = runVCcommand ('clicast cover environment build ' +  coverageProjectName + vc_inst_dir, globalAbortOnError)
 
         os.chdir(os.path.join (originalWorkingDirectory, vcWorkArea, vcCoverDirectory))
