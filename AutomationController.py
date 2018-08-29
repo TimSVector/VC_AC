@@ -409,17 +409,17 @@ def buildWorkarea():
             projectMode = 'update'
             createWorkspace = False
         else:
-            addToSummaryStatus ("   found partial work area -- removing VectorCAST directories -- starting new")
+            addToSummaryStatus ("   Found partial work area -- removing VectorCAST directories -- starting new")
             dirs = [vcCoverDirectory, vcManageDirectory, vcScriptsDirectory, vcHistoryDirectory]
             for dir in dirs:
                 fullDir = os.path.join(workAreaPath,dir)
-                print "trying to delete: " + fullDir
+                print "   Trying to delete: " + fullDir
                 if os.path.isdir(fullDir):
                     shutil.rmtree (fullDir)
     
     if createWorkspace: # create the workarea
         projectMode = 'new'
-        addToSummaryStatus ('   creating new work area ...')
+        addToSummaryStatus ('Creating new work area ...')
         addToSummaryStatus ('   location: ' + os.getcwd())
         #os.mkdir (vcWorkArea)
         try:    
@@ -1942,8 +1942,8 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
         if os.path.isdir(coverageProjectName):
            print "Removing existing working directory"
            shutil.rmtree(coverageProjectName)
-        stdOut, exitCode = runVCcommand ('clicast cover environment build ' +  coverageProjectName + vc_inst_dir, globalAbortOnError)
-
+        #stdOut, exitCode = runVCcommand ('clicast cover environment build ' +  coverageProjectName + vc_inst_dir, globalAbortOnError)
+        stdOut, exitCode = runVCcommand ('clicast cover environment build ' +  coverageProjectName + " " + os.path.join (originalWorkingDirectory.strip(), vc_inst_dir.strip()), globalAbortOnError)
         os.chdir(os.path.join (originalWorkingDirectory, vcWorkArea, vcCoverDirectory))
 
         if useParallelUseInPlace:
