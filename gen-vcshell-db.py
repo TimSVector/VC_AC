@@ -35,7 +35,7 @@ f.write(build_data)
 f.close()
 
 print "Building database..."
-cmd2Run = os.path.join(os.environ['VECTORCAST_DIR'], "vcshell --inputcmds=out.log putcommand")
+cmd2Run = os.path.join(os.environ['VECTORCAST_DIR'], "vcshell --inputcmds=vc_build.log putcommand")
 
 p = subprocess.Popen(cmd2Run, stdout=subprocess.PIPE, stderr=subprocess.PIPE,universal_newlines=True,shell=True)
 o,e = p.communicate()
