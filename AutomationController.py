@@ -1933,8 +1933,15 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
         else:
            para_dest_str = " "
            vc_inst_dir = " vc-inst"
+           
+        optionFlag = ""   
+        if len (vcdbFlagString) != 0:
+            defineFlag = readCFGoption ('C_DEFINE_FLAG') + '=1'
+            #return ' --vcdbOpt=--flags="' + defineFlag + ',' + vcdbFlagString + '"'
+            strippedVcdbFlags = vcdbFlagString.replace("=1","")
+            optionFlag ' --flags="' + defineFlag + ',' + vcdbFlagString + '" --needabspath="' + strippedVcdbFlags + '" '
 
-        stdOut, exitCode = runVCcommand ('vcutil instrument --all --coverage=' + coverageType + " --db="+ vcshellDBname + para_jobs_str + para_dest_str, globalAbortOnError)
+        stdOut, exitCode = runVCcommand ('vcutil instrument --all --coverage=' + coverageType + optionFlag +" --db="+ vcshellDBname + para_jobs_str + para_dest_str, globalAbortOnError)
 
         print ("Copying CCAST_.CFG file")
         shutil.copy("CCAST_.CFG",os.path.join (originalWorkingDirectory, vcWorkArea, vcCoverDirectory , "CCAST_.CFG"))
