@@ -843,7 +843,9 @@ def vcdbArgsOption (vcdbFlagString):
         return ''
     else:
         defineFlag = readCFGoption ('C_DEFINE_FLAG') + '=1'
-        return ' --vcdbOpt=--flags="' + defineFlag + ',' + vcdbFlagString + '"'
+        #return ' --vcdbOpt=--flags="' + defineFlag + ',' + vcdbFlagString + '"'
+        strippedVcdbFlags = vcdbFlagString.replace("=1","")
+        return ' --vcdbOpt="--flags="' + defineFlag + ',' + vcdbFlagString + '" --needabspath="' + strippedVcdbFlags + '""'
         
         
 def inListOfPaths (path):

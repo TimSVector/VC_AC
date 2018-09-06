@@ -21,7 +21,7 @@ import sys
 from vector.apps.EnvCreator import AutomationController
 
 # exit on error
-AutomationController.globalAbortOnError = True
+AutomationController.globalAbortOnError = False
 AutomationController.globalUpdateSystemTestPy = False
 
 #######################################################################################
