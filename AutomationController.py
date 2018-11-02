@@ -49,10 +49,12 @@ listOfFilesInProject = 'vcast-inproject-filelist.txt'
 listOfEnvironmentsInProject = 'vcast-inproject-envirolist.txt'
 
 vcWorkArea='vcast-workarea'
+vcshellDbName='vcshell.db'
 vcManageDirectory='vc_project'
 vcCoverDirectory='vc_coverage'
 vcScriptsDirectory='vc_ut_scripts'
 vcHistoryDirectory='vc_history'
+vcEnterpriseMode = False
 
 # These global are set for each run of the utiltity
 # compilerNodeName is the location where we will insert new environments
@@ -64,15 +66,13 @@ currentLanguage = 'none'
 # Unit Test Configuration Files
 ADA_CONFIG_FILE = 'ADACAST_.CFG'
 C_CONFIG_FILE = 'CCAST_.CFG'
+CUDA_HOST = 'HOST'
 
 # Controls the output of the stdout from all VectorCAST commands
 verboseOutput = False
 
 # Controls the failing/continuing of the scripts after a VectorCAST command failes
 globalAbortOnError = True
-
-# Controls the updating of system_test.py
-globalUpdateSystemTestPy = True
 
 # These variables are constructed from the --projectname arg
 coverageProjectName=""
@@ -85,7 +85,6 @@ cfgFileLocation=os.getcwd()
 # This is the location of the vcshell.db file, passed in by the caller
 # It might be the same as the originalWorkingDirectory
 vcshellDBlocation=''
-vcshellDBname='vcshell.db'
 
 
 # This is the make command info from the database
@@ -97,13 +96,17 @@ applicationList = []
 clicastVersion = ''
 vcInstallDir = os.environ["VECTORCAST_DIR"]
 locationOfInstrumentScript=os.path.join (vcInstallDir,'python','vector','apps','vcshell')
-pathToUnInstrumentScript=os.path.join (vcInstallDir,'python','vector','apps','EnvCreator','UnInstrument.py')
+pathToUnInstrumentScript=os.path.join (vcInstallDir,'python','vector','apps','AutomationController','UnInstrument.py')
 pathToEnvCreateScript=os.path.join (vcInstallDir,'python','vector','apps','vcshell','EnvCreate.py')
 
 # List of all files in the DB
 listOfAllFiles = []
 listOfFiles = []
 listOfPaths = []
+
+# CUDA artifacts
+cudaArchitectures = []
+cudaHostOnlyFiles = []
 
 # Contains the status message to display at the end of the run
 summaryStatusFileHandle = 0
@@ -113,6 +116,21 @@ useParallelInstrumentation = False
 useParallelJobs = ""
 useParallelDestination = ""
 useParallelUseInPlace = False
+
+
+def setVcWorkArea(vcastWorkArea):
+    '''
+        Api to set the global variables vcastWorkArea
+    '''
+    global vcWorkArea
+    vcWorkArea=vcastWorkArea
+
+def setVcshellDbName(vcshellDB):
+    '''
+        Api to set the global variable vcshellDbName
+    '''
+    global vcshellDbName
+    vcshellDbName=vcshellDB
 
 def addToSummaryStatus (message):
     '''
@@ -152,9 +170,10 @@ def fatalError (errorString):
     print ('Terminating ...\n\n')
     raise Exception ('VCAST Termination Error')    
     
+def isCuda():
+    return len(cudaArchitectures) > 0
     
-    
-def runVCcommand(command, abortOnError):
+def runVCcommand(command, abortOnError=False):
     '''
     Run Command with subprocess.Popen and return status
     If the fatal flag is true, we abort the process, if 
@@ -162,15 +181,17 @@ def runVCcommand(command, abortOnError):
     '''
     
     global verboseOutput
-    if verboseOutput:
-        print "CWD: " +  os.getcwd() + " => " + command
 
     cmdOutput = ''
     commandToRun = os.path.join (vcInstallDir, command)
     
     print '   running command: ' + commandToRun
-    vcProc = subprocess.Popen(commandToRun, stdout=subprocess.PIPE,\
-                                stderr=subprocess.PIPE,universal_newlines=True,shell=True)
+    vcProc = subprocess.Popen(commandToRun,
+                              stdout=subprocess.PIPE,
+                              stdin=subprocess.PIPE,
+                              stderr=subprocess.PIPE,
+                              universal_newlines=True,
+                              shell=True)
     stdoutLines = iter(vcProc.stdout.readline, "")
     stderrLines = iter(vcProc.stderr.readline, "")
 
@@ -212,7 +233,6 @@ def runVCcommand(command, abortOnError):
         print '   stdout/stderr => '
         print cmdOutput
         if abortOnError:
-            print "AC: Raising Exception"
             raise Exception ('VectorCAST command failed')
 
     return cmdOutput, exitCode
@@ -270,6 +290,9 @@ def unInstrumentSourceFiles():
                 print ('bak file:      ' + bakFile)
                 shutil.copy (bakFile, originalFile)
                 os.remove (bakFile)        
+            cudaFile = originalFile+'.vcast.cuda'
+            if os.path.isfile (cudaFile):
+                os.remove (cudaFile)        
         fileList.close ()
     else:
         # if there is no existing file list, just call un-instrument
@@ -377,12 +400,6 @@ def getCFGfile ():
 
 def buildWorkarea():
 
-    global vcCoverDirectory
-    global coverageProjectName
-    global vcManageDirectory
-    global manageProjectName
-
-    addToSummaryStatus ('   checking for work area ...')
     workAreaPath = os.path.join (os.getcwd(), vcWorkArea)
     
     # Pre September 2017 we use vc_manage to store the manage project
@@ -435,21 +452,34 @@ def buildWorkarea():
     return projectMode
     
 
-def vcshellDBarg (force=False):
+def vcshellDBarg (force=False, cfgFile=False):
     '''
     This function will return the "--db path" arg to be passed
     to the vcdb command when the location of the vcshell.db is NOT
     the same as the current working directory
     '''
     global vcshellDBlocation
-    global vcshellDBname
+    global vcshellDbName
     global originalWorkingDirectory
+    global cfgFileLocation
 
-    if force or vcshellDBlocation!=originalWorkingDirectory:
-        return '--db=' + os.path.join (vcshellDBlocation, vcshellDBname)
+    retVal = ""
+
+    if force or vcshellDBlocation!=originalWorkingDirectory or vcshellDbName!='vcshell.db':
+        retVal = '--db=' + os.path.join (vcshellDBlocation, vcshellDbName)
     else:
-        return "--db=" + vcshellDBname
+        retVal =""
+
+    # pass in the CFG file if it has been specified
+    if len(cfgFileLocation) > 0:
+        cfg = cfgFileLocation
+        if cfgFile:
+           cfg = os.path.join(cfg, C_CONFIG_FILE)
+        retVal = retVal + " --cfg=" + cfg
+
+    return retVal
     
+
 def normalizePath (path):
     '''
     This function will a path to be all lower case if we are on windows
@@ -459,18 +489,10 @@ def normalizePath (path):
     else:
         return path
         
-    
 def initialize (compilerCFG, filterFunction, vcdbFlagString, filesOfInterest):
 
-    global listOfFiles
-    global listOfAllFiles
     global listOfPaths
     global vcshellDBlocation
-    global topLevelMakeCommand
-    global topLevelMakeLocation
-    global applicationList   
-    global vcshellDBname
-    global globalAbortOnError
     
     
     projectMode = ''
@@ -478,62 +500,17 @@ def initialize (compilerCFG, filterFunction, vcdbFlagString, filesOfInterest):
     fullPathList = []
     sectionBreak ('')
     
-    addToSummaryStatus ('Validating vcshell.db ... (' + vcshellDBname + ")")
+    addToSummaryStatus ('Validating %s ...' % vcshellDbName)
     startMS = time.time()*1000.0
  
     # Generate the compiler configuration file
     initializeCFGfile (compilerCFG, vcdbFlagString)
+
+    initializeCudaArtifacts ( compilerCFG )
     
-    if os.path.isfile (os.path.join (vcshellDBlocation, vcshellDBname)):
-        # Create a global list of all of the files in the DB
-        stdOut, exitCode = runVCcommand ('vcdb ' + vcshellDBarg() + ' getfiles', True)
-        # strip the trailing CR and then split
-        listOfAllFiles = stdOut.rstrip('\n').split('\n')
-        if len (listOfAllFiles) == 0:
-            fatalError ('No files found in vcshell.db (' + vcshellDBname + ')')
-        else:
-            addToSummaryStatus ('   found ' + str(len (listOfAllFiles)) + ' total source files')
-            
-        # Now Call the user supplied filter function to filter the fullFileList
-        addToSummaryStatus ('   applying the user-defined filter to the file list ... ')
-        # filterFunction is the user supplied callback function
-        originalFileListLength = len (listOfAllFiles)
-        listOfAllFiles = filterFunction(listOfAllFiles)
-        if len (listOfAllFiles) < originalFileListLength:
-            addToSummaryStatus ('   user filter reduced file count to: ' + str (len (listOfAllFiles)))
-            
-        # Move the user specified files of interest to the begining in listOfAllFiles
-        if filesOfInterest != [parameterNotSetString]:
-            if os.name == "nt":
-                filesOfInterest = [file.lower() for file in filesOfInterest]
-            sortedListOfAllFiles = list(listOfAllFiles)
-            filesNotInDb = list(filesOfInterest)
-            index = 0
-            for file in listOfAllFiles:
-                fullPath = ''
-                if os.name == "nt":
-                    tempFile = file.lower()
-                else:
-                    tempFile = file
-                # If file matches any entry in filesOfInterest 
-                if tempFile in filesOfInterest or os.path.basename(file) in filesOfInterest:
-                    sortedListOfAllFiles.remove(file)
-                    sortedListOfAllFiles.insert(index, file)
-                    index += 1
-                    if tempFile in filesOfInterest:
-                        filesNotInDb.remove(tempFile)
-                    else:
-                        filesNotInDb.remove(os.path.basename(file))
-                # Exit the loop if all files in files of interest processed
-                if not filesNotInDb:
-                    break
-            # If the user specified file is not in db. Log the file in summary and continue
-            if filesNotInDb:
-               addToSummaryStatus('   File %s in FILES_OF_INTEREST not found in db' % str(filesNotInDb))
-            listOfAllFiles = list(sortedListOfAllFiles)
-        # filter based on: already in project and max size
-        listOfFiles = filterTheFileList (listOfAllFiles)
-        addToSummaryStatus ('   ' + str(len (listOfFiles)) + ' files will be added for system testing ... ')
+    addToSummaryStatus ('Validating vcshell.db ...')
+    if os.path.isfile (os.path.join (vcshellDBlocation, vcshellDbName)):
+        setupGlobalFileListsFromDatabase(filterFunction, filesOfInterest, vcshellDBarg())
 
         # Create a global list of all of the directory paths in the DB
         stdOut, exitCode = runVCcommand ('vcdb ' + vcshellDBarg() + ' getpaths', True)
@@ -551,28 +528,12 @@ def initialize (compilerCFG, filterFunction, vcdbFlagString, filesOfInterest):
         del fullPathList[:]
         if len (listOfPaths) > 0:
             addToSummaryStatus ('   found ' + str(len (listOfPaths)) + ' source paths')   
-            
-        # Read the top level make command and directory from the database
-        cmdOutput, exitCode = runVCcommand ('vcdb ' + vcshellDBarg() + ' gettopdir', globalAbortOnError)
-        if exitCode==0:
-            topLevelMakeLocation=cmdOutput.strip('\n')
-        else:
-            topLevelMakeLocation=''
-            
-        cmdOutput, exitCode = runVCcommand ('vcdb ' + vcshellDBarg() + ' gettopcmd', globalAbortOnError)
-        if exitCode==0:
-            topLevelMakeCommand = cmdOutput.strip('\n')
-        else:
-            topLevelMakeCommand=''
-        stdOut, exitCode = runVCcommand ('vcdb ' + vcshellDBarg() + ' getapps', globalAbortOnError)
-        if 'Apps Not found' in stdOut:
-            applicationList = []
-        else:
-            applicationList = stdOut.split ('\n')
+
+        setupApplicationBuildGlobals(vcshellDBarg())
          
     else:
         # This call will exit the program
-        fatalError ('Cannot find file: vcshell.db (' + vcshellDBname + ' in directory: ' + vcshellDBlocation + ', please build project with vcshell before running this script\n')  
+        fatalError ('Cannot find file: %s in directory: ' % vcshellDbName + vcshellDBlocation + ', please build project with vcshell before running this script\n')  
         
 
     # Build the workarea directory structure
@@ -586,9 +547,201 @@ def initialize (compilerCFG, filterFunction, vcdbFlagString, filesOfInterest):
     
     return projectMode
 
+def cudaArchMacro ( architecture, definition=True ):
+    if architecture.isdigit():
+        if definition:
+            return "__CUDA_ARCH__=" + architecture + "0"
+        else:
+            return "__CUDA_ARCH__==" + architecture + "0"
+    else:
+        return ""
 
-           
-def buildCoverageProject (projectMode, inplace):
+def cudaArchName ( architecture ):
+    if architecture.isdigit():
+        return "ARCH_" + architecture
+    else:
+        return CUDA_HOST
+
+'''
+These are files that have a .cpp extension, but are not forced to
+be treated as a device file via the "-x cu" compiler option
+'''
+def initializeCudaHostOnlyFiles ( listOfAllFiles ):
+    global cudaHostOnlyFiles
+    cudaHostOnlyFiles = []
+    # only set this up if we're dealing with CUDA
+    if isCuda():
+        for a_file in listOfAllFiles:
+            if os.path.splitext(a_file)[1] != '.cu':
+                # get compiler command for this file
+                command, exitCode = runVCcommand (command='vcdb ' +
+                                                  vcshellDBarg(force=True) +
+                                                  ' getcommand --file=' +
+                                                  a_file)
+                # if the flag is not there, add it to our list
+                if "-x cu" not in command:
+                    cudaHostOnlyFiles.append(a_file)
+
+def buildCudaCoverageProjects (projectMode, workingDir):
+    global cudaHostOnlyFiles
+
+    addToSummaryStatus ('Building CUDA Coverage Environments ...')
+    os.chdir ( workingDir )
+    currentDirectory = os.getcwd()
+    for arch in cudaArchitectures:
+        arch_name = cudaArchName ( arch )
+        arch_macro = cudaArchMacro ( arch )
+        os.mkdir ( arch_name )
+        buildCoverageProject (projectMode=projectMode,
+                              projectName=arch_name,
+                              inplace=False,
+                              workingDirectory=os.path.join(currentDirectory, arch_name),
+                              instDir='.')
+
+        # remove any files that are host-only
+        if 'HOST' not in arch_name:
+            for a_file in cudaHostOnlyFiles:
+                runVCcommand ('clicast -e ' + arch_name +
+                                  ' -u ' + a_file +
+                                  ' cover source remove',
+                              True);
+
+        # set macro flag for CUDA architectures
+        if len(arch_macro) > 0:
+            runVCcommand ('clicast -lc options_append C_DEFINE_LIST ' + arch_macro)
+
+        # add include paths to cover project
+        for include in listOfPaths:
+            runVCcommand ('clicast -lc Option LIBRARY_INCLUDE_DIR ' + include[0])
+        os.chdir ( currentDirectory )
+ 
+
+def setupGlobalFileListsFromDatabase(filterFunction, filesOfInterest, vcshellArg):
+    '''
+    This function will set the listOfAllFiles and listOfFiles globals
+    from the files in the database.
+    '''
+
+    global listOfFiles
+    global listOfAllFiles
+
+    # Create a global list of all of the files in the DB
+    listOfAllFiles = prependFilesOfInterest(
+        getFilesFromDatabase(filterFunction, vcshellArg),
+        filesOfInterest)
+
+    # filter based on: already in project and max size
+    listOfFiles = filterTheFileList (listOfAllFiles)
+    addToSummaryStatus ('   ' + str(len (listOfFiles)) + ' files will be added for system testing ... ')
+
+
+def getAllFilesFromDatabase(vcshellArg):
+    '''
+    This function returns all the files in the database.
+    '''
+    stdOut, exitCode = runVCcommand ('vcdb ' + vcshellArg + ' getfiles', True)
+    # strip the trailing CR and then split
+    out = stdOut.rstrip('\n').split('\n')
+    if len (out) == 0:
+        fatalError ('No files found in %s' % vcshellDbName)
+    else:
+        addToSummaryStatus ('   found ' + str(len (out)) + ' total source files')
+
+    return out
+
+def getFilesFromDatabase(filterFunction, vcshellArg):
+    '''
+    This function returns the files from the database. The filter function can be used to
+    filter the files.
+    '''
+    original = getAllFilesFromDatabase(vcshellArg)
+    addToSummaryStatus ('   applying the user-defined filter to the file list ... ')
+    # filterFunction is the user supplied callback function
+    originalFileListLength = len (original)
+    out = filterFunction(original)
+    if len (out) < originalFileListLength:
+        addToSummaryStatus ('   user filter reduced file count to: ' + str (len (out)))
+
+    return out
+
+def prependFilesOfInterest(original, filesOfInterest):
+    '''
+    This function moves filesOfInterest to the begining of original
+    '''
+    if filesOfInterest == [parameterNotSetString]:
+        return original
+
+    if os.name == "nt":
+        filesOfInterest = [file.lower() for file in filesOfInterest]
+    sortedListOfAllFiles = list(original)
+    filesNotInDb = list(filesOfInterest)
+    index = 0
+    for file in original:
+        if os.name == "nt":
+            tempFile = file.lower()
+        else:
+            tempFile = file
+        # If file matches any entry in filesOfInterest 
+        if tempFile in filesOfInterest or os.path.basename(file) in filesOfInterest:
+            sortedListOfAllFiles.remove(file)
+            sortedListOfAllFiles.insert(index, file)
+            index += 1
+            if tempFile in filesOfInterest:
+                filesNotInDb.remove(tempFile)
+            else:
+                filesNotInDb.remove(os.path.basename(file))
+        # Exit the loop if all files in files of interest processed
+        if not filesNotInDb:
+            break
+    # If the user specified file is not in db. Log the file in summary and continue
+    if filesNotInDb:
+       addToSummaryStatus('   File %s in FILES_OF_INTEREST not found in db' % str(filesNotInDb))
+    return list(sortedListOfAllFiles)
+
+def setupApplicationBuildGlobals(vcshellArg):
+    '''
+    Sets the globals related to building the applications under test.
+    '''
+
+    global topLevelMakeLocation
+    global topLevelMakeCommand
+    global applicationList
+
+    topLevelMakeLocation = getTopLevelMakeLocation(vcshellArg)
+    topLevelMakeCommand = getTopLevelMakeCommand(vcshellArg)
+    applicationList = getApplicationList(vcshellArg)
+
+def getTopLevelMakeLocation(vcshellArg):
+    '''
+    Return the top level make directory from the database.
+    '''
+    cmdOutput, exitCode = runVCcommand ('vcdb ' + vcshellArg + ' gettopdir')
+    if exitCode==0:
+        return cmdOutput.strip('\n')
+    else:
+        return ''
+
+def getTopLevelMakeCommand(vcshellArg):
+    '''
+    Return the top level make command from the database.
+    '''
+    cmdOutput, exitCode = runVCcommand ('vcdb ' + vcshellArg + ' gettopcmd')
+    if exitCode==0:
+        return cmdOutput.strip('\n')
+    else:
+        return ''
+
+def getApplicationList(vcshellArg):
+    '''
+    Get the application list from the database.
+    '''
+    stdOut, exitCode = runVCcommand (command='vcdb ' + vcshellArg + ' getapps')
+    if 'Apps Not found' in stdOut:
+        return []
+    else:
+        return stdOut.split ('\n')
+
+def buildCoverageProject (projectMode, projectName, inplace, workingDirectory, instDir='vcast-inst'):
     '''
     This function will build a coverage project, and add all of the files from the vcdb
     We do not instrument in this function, we do that after the lint analysis runs
@@ -597,15 +750,12 @@ def buildCoverageProject (projectMode, inplace):
     global listOfFiles
     global listOfFilenamesFile
     global globalCoverageProjectExists
-    global vcshellDBlocation
-    global vcshellDBname
-    global globalAbortOnError
 
     sectionBreak('')
-    addToSummaryStatus ('Building Coverage Environment ...')
+    addToSummaryStatus ('Building Coverage Environment ' + projectName + ' ...')
     startMS = time.time()*1000.0
 
-    os.chdir (os.path.join (originalWorkingDirectory, vcWorkArea, vcCoverDirectory )) 
+    os.chdir(workingDirectory) 
     
     try:
         if projectMode=='new':
@@ -613,23 +763,25 @@ def buildCoverageProject (projectMode, inplace):
             getCFGfile ()
                           
             addToSummaryStatus ('   creating the coverage project ...')
-            stdOut, exitCode = runVCcommand ('clicast cover env create ' + coverageProjectName, True);
+            stdOut, exitCode = runVCcommand ('clicast cover env create ' + projectName, True);
             
-            # Create the instrumentation directory if we are not instrumenting in place.
-            if not inplace:
-                vcInstDir = 'vcast-inst'
+            if inplace:
+                runVCcommand ('clicast -e ' + projectName + ' cover options in_place Y', True);
+            else:
+                # Create the instrumentation directory if we are not instrumenting in place.
+                vcInstDir = instDir
                 if not os.path.isdir (vcInstDir):
                     os.mkdir (vcInstDir)
-                stdOut, exitCode = runVCcommand ('clicast -e ' + coverageProjectName + ' cover options set_instrumentation_directory ' + vcInstDir, True);
-                stdOut, exitCode = runVCcommand ('clicast -e ' + coverageProjectName + ' cover options in_place n', True);
-               
+                stdOut, exitCode = runVCcommand ('clicast -e ' + projectName + ' cover options set_instrumentation_directory ' + vcInstDir, True);
+                stdOut, exitCode = runVCcommand ('clicast -e ' + projectName + ' cover options in_place n', True);
+
         if len (listOfFiles) > 0:
             filecountString = str (len (listOfFiles) )
             addToSummaryStatus ('   adding ' + filecountString +' source files  ...')
             # This clicover command will look like:
             # cliccover add_source_vcdb vcshell.db vcast-latest-filelist.txt
-            stdOut, exitCode = runVCcommand ('clicover add_source_vcdb ' + coverageProjectName + ' ' + \
-                 os.path.join (vcshellDBlocation, vcshellDBname) + ' ' + \
+            stdOut, exitCode = runVCcommand ('clicover add_source_vcdb ' + projectName + ' ' + \
+                 os.path.join (vcshellDBlocation, vcshellDbName) + ' ' + \
                  os.path.join (originalWorkingDirectory, vcWorkArea, listOfFilenamesFile), True);       
                  
         globalCoverageProjectExists=True
@@ -639,30 +791,196 @@ def buildCoverageProject (projectMode, inplace):
     except Exception, err:
         # If we get a flex error, we continue
         if globalAbortOnError:
-            print "AC: raising error: " + str(e)
             raise e
         elif str(err)=='FLEXlm error' or str(err)=='VectorCAST command failed':
             addToSummaryStatus ('   error creating cover project, continuing ...')
             globalCoverageProjectExists = False
         else:
-            print "AC: raising error: " + str(e)
             raise
             
+'''
+This function will take the full path to the cover Environment vcp
+file and return a tuple of the directory and the environment name.
+e.g. "/foo/bar/workarea/environment.vcp" will return
+( "/foo/bar/workarea", environment )
+'''
+def coverDirectoryAndName ( coverEnvironmentFullPath ):
+    directory = os.path.dirname ( coverEnvironmentFullPath )
+    environment = os.path.basename ( coverEnvironmentFullPath )
+    return directory, environment
+
+'''
+This function will instrument and/or perform Lint analysis on all the
+cover environments in a CUDA-based Manage project
+'''
+def instrumentCudaCoverageProjects ( coverageType,
+                                     runLint,
+                                     localListOfMainFiles,
+                                     workingDir ):
+    os.chdir ( workingDir )
+    addToSummaryStatus ('Instrumenting CUDA Coverage Environments ...')
+    for arch in cudaArchitectures:
+        arch_name = cudaArchName ( arch )
+        coverageDirectory = os.path.join(workingDir, vcCoverDirectory)
+        coverDirectory = os.path.join(coverageDirectory, arch_name)
+        instrumentCoverageProject ( coverageType,
+                                    runLint,
+                                    localListOfMainFiles,
+                                    os.path.join ( coverDirectory, arch_name + '.vcp' ) )
+        os.chdir ( workingDir )
+
+'''
+This function will parse the line read from 'cuda_device_coverage.h'
+and generate the search key and actual size from line
+Each line we process from will be in the format:
+   __device__ __align__(4) char vcast_unit_stmt_bytes_1_device[1] = { 0 };
+'''
+def getCudaKeyAndSize ( line ):
+    pieces = line.strip().split(' ')
+    # 3rd element contains the key and size
+    key_and_size = pieces[3].split('_')
+    # size will be embedded in the last element of key_and_size
+    key = '_'.join(key_and_size[:-1])
+    start_size = line.find('[')
+    end_size = line.find(']')
+    size = line[start_size+1:end_size]
+    return key, int(size)
+
+'''
+Instrumentation will create a header file 'cuda_device_coverage.h'
+that contains the coverage objects we need for the CUDA devices.
+The original coverage objects need to be as big as the largest
+device object, so we will search through each file for the largest size, and
+update the coverage objects in vcast_c_options.h to be able to handle data
+from all devices.
+We will create a dictionary (sizes) whose key is the typemark/name for
+the object, and whose value is the largest size we can find
+'''
+def updateCudaHostEnvironment ( workingDir ):
+    addToSummaryStatus ('Verifying CUDA Coverage Environments ...')
+    # dictionary of largest sizes found
+    # (key is '<object name>')
+    maxSizes = {}
+    # dictionary of host sizes (for searching)
+    # (key is '<object name>)'
+    hostSizes = {}
+    # dictionary of sizes for each object per architecture
+    # (key is '<arch> <object name>')
+    archSizes = {}
+    for arch in cudaArchitectures:
+        arch_name = cudaArchName ( arch )
+        sizeFilename = os.path.join ( workingDir,       # location of project
+                                      vcCoverDirectory, # location of environments
+                                      arch_name,        # architecture folder
+                                      arch_name,        # cover environment
+                                      'cuda_device_coverage.h' )
+        if os.path.isfile ( sizeFilename ):
+            addToSummaryStatus ('   scanning options file for ' + arch_name )
+            with open ( sizeFilename, 'r' ) as sizeFile:
+                # for each line in file
+                for line in sizeFile:
+                    # if the line matches our template, then process it
+                    if line.startswith('__device__'):
+                        # extract the key and size from this line
+                        sizeKey, size = getCudaKeyAndSize ( line )
+                        # need to save the host values for searching later
+                        if arch == CUDA_HOST:
+                            hostSizes[sizeKey] = size
+                        # need to save arch values for populating size array
+                        else:
+                            archSizes[arch+' '+sizeKey] = size
+                        # if the key is already in the dictionary,
+                        if sizeKey in maxSizes:
+                            # the key value is max between previous and this
+                            size = max(size, maxSizes[sizeKey])
+                        maxSizes[sizeKey] = size
+        else:
+            addToSummaryStatus ('   failed to find size file for ' +
+                                arch_name +
+                                ', continuing ...')
+
+    # Now update the host environment with the max sizes
+    hostFilename = os.path.join ( workingDir,       # location of project
+                                  vcCoverDirectory, # location of environments
+                                  CUDA_HOST,        # architecture folder
+                                  CUDA_HOST,        # cover environment
+                                  'vcast_c_options.h' )
+    addToSummaryStatus ('   updating options file for host' )
+    hostFile = open ( hostFilename, 'r' )
+    contents = open ( hostFilename ).read()
+    hostFile.close()
+    # create backup of file
+    backup = open ( hostFilename + '.bak', 'w' )
+    backup.write ( contents )
+    backup.close()
+    # replace each copy of the key with the largest size
+    for key in maxSizes:
+        # we can find objects that were not on the host, so
+        # protect against that here
+        if key not in hostSizes:
+            hostSizes[key] = 0
+        original = key + '[' + str(hostSizes[key]) + ']'
+        replacement = key + '[' + str(maxSizes[key]) + ']'
+        contents = contents.replace(original, replacement)
+    # update original file
+    hostFile = open ( hostFilename, 'w' )
+    hostFile.write ( contents )
+    hostFile.close()
+
+    # Now update the host environment with the size array initialization
+    addToSummaryStatus ('   updating size information object' )
+    hostFilename = os.path.join ( workingDir,       # location of project
+                                  vcCoverDirectory, # location of environments
+                                  CUDA_HOST,        # architecture folder
+                                  CUDA_HOST,        # cover environment
+                                  'cuda_size_initialization.h' )
+    hostFile = open ( hostFilename, 'w' )
+    for key in sorted(archSizes):
+        # first item is architecture, second is object name
+        pieces = key.split(' ')
+        arch = int(pieces[0])
+        major = arch / 10
+        minor = arch - ( major * 10 )
+        arrayIndex = '[' + str(major) + '][' + str(minor) + ']'
+        hostFile.write ( 'sizes_' + pieces[1] + arrayIndex + ' = ' +
+                         str(archSizes[key]) + ';\n' )
+    hostFile.close()
+
+'''
+This function will instrument and/or perform Lint analysis on the
+specified cover environment
+'''
+def instrumentCoverageProject ( coverageType,
+                                runLint,
+                                localListOfMainFiles, 
+                                coverEnvironmentFullPath ):
+        
+    if coverageType != 'none':
+        instrumentFiles ( coverageType, localListOfMainFiles, coverEnvironmentFullPath )
+
+    # If the caller requested lint analysis
+    if maximumFilesToSystemTest>0 and runLint:
+        runLintAnalysis ( coverEnvironmentFullPath )
+        
+
     
-def runLintAnalysis ():
+def runLintAnalysis (coverEnvironmentFullPath):
     '''
     This will do the Lint analysis
     We need to run the following command on the VC/Cover project
     $VECTORCAST_DIR/clicast -e <env> cover tools lint_analyze
     '''
+
+    workingDir, coverageProjectName  = coverDirectoryAndName (
+                                         coverEnvironmentFullPath )
        
     sectionBreak('')
     addToSummaryStatus ('Starting Lint Analysis ...')
     startMS = time.time()*1000.0
     
     try:      
-        os.chdir (os.path.join (originalWorkingDirectory, vcWorkArea, vcCoverDirectory ))
-        stdOut, exitCode = runVCcommand ('clicast -e ' + coverageProjectName + ' cover tools lint_analyze', globalAbortOnError)
+        os.chdir ( workingDir )
+        stdOut, exitCode = runVCcommand ('clicast -e ' + coverageProjectName + ' cover tools lint_analyze')
         
         endMS = time.time()*1000.0
         addToSummaryStatus ('   complete (' + getTimeString(endMS-startMS) + ')')
@@ -677,7 +995,7 @@ def runLintAnalysis ():
     
    
     
-def instrumentFiles (coverageType, listOfMainFiles):
+def instrumentFiles (coverageType, listOfMainFiles, coverEnvironmentFullPath):
     '''
     This function will instrument all of the files in the cover project
     We do this in two parts, for the new files that just got added during
@@ -688,13 +1006,16 @@ def instrumentFiles (coverageType, listOfMainFiles):
     global listOfFiles
     
     sectionBreak('')
-    addToSummaryStatus ('Starting Instrumentation ...')
     startMS = time.time()*1000.0
     
     try:
         
-        locationOfCoverageProject = os.path.join (originalWorkingDirectory, vcWorkArea, vcCoverDirectory )
-        os.chdir (locationOfCoverageProject)
+        workingDir, coverageProjectName  = coverDirectoryAndName (
+                                               coverEnvironmentFullPath )
+
+        addToSummaryStatus ('Starting Instrumentation for ' + coverageProjectName + ' ...')
+
+        os.chdir (workingDir)
         
         # The instrumented files need functions that are defined in the
         # VectorCAST coverage library file: c_cover_io.c.  The easiest way
@@ -714,7 +1035,7 @@ def instrumentFiles (coverageType, listOfMainFiles):
         
         # We don't want to overwhelm the command line if we have 10k files for example
         if len (listOfFilesString) > 1000:
-           stdOut, exitCode = runVCcommand ('clicast -e' + coverageProjectName + ' cover instrument ' + coverageType, globalAbortOnError)
+            stdOut, exitCode = runVCcommand ('clicast -e' + coverageProjectName + ' cover instrument ' + coverageType, globalAbortOnError)
         else:
             # Run instrumentation on the new files ...
             stdOut, exitCode = runVCcommand ('clicover instrument_' + coverageType.replace ('+', '_') + ' ' + coverageProjectName + ' ' + listOfFilesString, globalAbortOnError)
@@ -919,7 +1240,7 @@ def buildEnvScripts (coverageType, includePathOverRide, envFileEditor, vcdbFlagS
                 # fileName is the full path, so strip path,
                 # strip extension, and force upper case
                 filePart = os.path.basename(fileName).split('.')[0].upper()
-                if not os.path.isfile ('ENV_' + filePart + '.env'):
+                if not os.path.isfile (filePart + '.env'):
                     prunedList.append (fileName)
                     count = count + 1
                     if count == maximumFilesToUnitTest:
@@ -937,7 +1258,7 @@ def buildEnvScripts (coverageType, includePathOverRide, envFileEditor, vcdbFlagS
                 addToSummaryStatus ('   building ' + str(len(prunedList)) + ' environment scripts ...') 
                 
                 # Call the EnvCreate.py script to build the env files.
-                commandArgs =  ' ' + vcshellDBarg(force=True) + ' ' + envCoverArgString(coverageType) 
+                commandArgs =  ' ' + vcshellDBarg(force=True,cfgFile=True) + ' ' + envCoverArgString(coverageType) 
                 commandArgs += pathArgs (includeList, excludeList)
                 commandArgs += ' --filelist=' + os.path.join (originalWorkingDirectory, vcWorkArea, tempFileName)
                 commandArgs += vcdbArgsOption(vcdbFlagString)
@@ -956,7 +1277,7 @@ def buildEnvScripts (coverageType, includePathOverRide, envFileEditor, vcdbFlagS
                 addToSummaryStatus ('   calling the user-supplied environment script editor ...')
                 for filePath in listOfAllFiles:
                     fileName = os.path.basename(filePath)
-                    envFileName = 'ENV_' + fileName.split('.')[0].upper() + '.env'
+                    envFileName = fileName.split('.')[0].upper() + '.env'
                     envFileEditor (envFileName)             
     
         endMS = time.time()*1000.0
@@ -1058,20 +1379,47 @@ def unitTestTestSuiteName ():
     else:
         return 'UnitTesting'
         
-        
-        
+def unitTestDefaultGroupName():
+    '''
+    Returns the default unit test group name.
+    '''
+    return 'UT-Group'
+
 def unitTestGroupName ():
     '''
     the nextUTgroupName will contain the unique group
     name based on the contents of the existing project
     ''' 
     if currentLanguage=='ada':
-        return 'UT-Group-Ada-' + compilerNodeName
+        return '{0}{1}{2}'.format(unitTestDefaultGroupName(), '-Ada-', compilerNodeName)
     else:
-        return 'UT-Group-'+ compilerNodeName
+        return '{0}{1}{2}'.format(unitTestDefaultGroupName(), '-', compilerNodeName)
 
+def addCudaGencodeOptions ( manageCommands ):
+    if len(cudaArchitectures) > 0:
+        # need to find original C_COMPILE_CMD
+        cwd = os.getcwd()
+        os.chdir(cfgFileLocation)
+        compileCmd, exitCode = runVCcommand('clicast -lc get_option C_COMPILE_CMD')
+        linkCmd, exitCode = runVCcommand('clicast -lc get_option C_LINK_CMD')
+        os.chdir(cwd)
 
-        
+        # build gencode options
+        cudaOptions = ''
+        for arch in cudaArchitectures:
+            if 'HOST' not in arch:
+                cudaOptions = ( cudaOptions + ' -gencode' +
+                                ' arch=compute_' + arch +
+                                '\,code=sm_' + arch )
+        # set compile/link commands to original command plus gencode options
+        addToSummaryStatus ("   adding 'gencode' options for CUDA Unit Test Node")
+        manageCommands.append('--compiler=' + compilerNodeName +
+                              ' --config=C_COMPILE_CMD="' +
+                              compileCmd.strip('\n') + ' ' + cudaOptions + '"')
+        manageCommands.append('--compiler ' + compilerNodeName +
+                              ' --config=C_LINK_CMD="' +
+                              linkCmd.strip('\n') + ' ' + cudaOptions + '"')
+            
 def buildCompilerNode ():
     '''
     This function will add a new compiler node to the manage tree
@@ -1091,6 +1439,9 @@ def buildCompilerNode ():
             manageCommands.append('--cfg-to-compiler=CCAST_.CFG')
             # Manage Creates a testsuite node called "TestSuite" by default
             manageCommands.append('--testsuite=TestSuite --delete')
+
+            # add gencode options for CUDA
+            addCudaGencodeOptions ( manageCommands )
             
         elif currentLanguage=='ada':
             manageCommands.append('--cfg-to-compiler=ADACAST_.CFG')
@@ -1107,29 +1458,57 @@ def buildCompilerNode ():
     return manageCommands
    
 
+def getDefaultSystemTestingGroupName():
+    '''
+    This function returns the default system testing manage project group name
+    '''
+    return 'ST-Group'
 
-def commandsToBuildProjectTree (coverageProjectName, coverageType, tcTimeOut):
+
+def getDefaultSystemTestingTestSuiteName():
+    '''
+    This function return the default system testing manage project testsuite name
+    '''
+    return 'SystemTesting'
+
+def commandsToBuildProjectTree ( projectPaths,
+                                 coverageType,
+                                 tcTimeOut,
+                                 systeTestCompilerNodeName='SystemTestingCompilerNode' ):
     '''
     This function will create the basic structure of the manage project
+    groupAndProject is a list of tuples, with the first element in the tuple being
+    the group name, and the second element being the full path to the .vcp file
     '''
 
     manageCommands = []
     if platformLevelString():
         manageCommands.append(platformLevelString() + ' --create')
 
-    systeTestCompilerNodeName = 'SystemTestingCompilerNode'
     lanaguage='none'
-    manageCommands.append(platformLevelString() + ' --config="VCDB_FILENAME=%s"' % (os.path.join (vcshellDBlocation, 'vcshell.db')))
+    manageCommands.append(platformLevelString() + ' --config="VCDB_FILENAME=%s"' % (os.path.join (vcshellDBlocation, vcshellDbName)))
     manageCommands.append(platformLevelString() + ' --coverage-type="%s"' % (coverageType))
     manageCommands.append(platformLevelStringWithSlash()+ systeTestCompilerNodeName + ' --create')
     
-    manageCommands.append(platformLevelStringWithSlash() + systeTestCompilerNodeName + '/SystemTesting --create')
-    manageCommands.append('--group ST-Group --create')
-    manageCommands.append(platformLevelStringWithSlash() + systeTestCompilerNodeName + '/SystemTesting --add ST-Group')
-    if globalCoverageProjectExists and len (coverageProjectName) > 0:
-        addToSummaryStatus ('   adding the coverage project for system testing')
-        manageCommands.append('--import ' + os.path.join ('..', vcCoverDirectory, coverageProjectName + '.vcp'))
-        manageCommands.append('--group ST-Group --add ' + coverageProjectName)
+    manageCommands.append('{0}{1}/{2} --create'.format(
+        platformLevelStringWithSlash(),
+        systeTestCompilerNodeName,
+        getDefaultSystemTestingTestSuiteName()))
+    manageCommands.append('--group %s --create' % getDefaultSystemTestingGroupName())
+    manageCommands.append(
+        '{0}{1}/{2} --add {3}'.format(
+            platformLevelStringWithSlash(),
+            systeTestCompilerNodeName,
+            getDefaultSystemTestingTestSuiteName(),
+            getDefaultSystemTestingGroupName()))
+    for projectPath in projectPaths:
+        if globalCoverageProjectExists and len (projectPath) > 0:
+            addToSummaryStatus ('   adding the coverage environment ' + projectPath)
+            manageCommands.append('--import ' + os.path.join ('..', vcCoverDirectory, projectPath))
+            projectName = os.path.splitext(os.path.basename(projectPath))[0]
+            manageCommands.append('--group {0} --add {1}'.format(
+                getDefaultSystemTestingGroupName(),
+                projectName))
     
     # Make sure that we got a number for this option
     if type (tcTimeOut)==int:
@@ -1238,19 +1617,32 @@ def createFileClassList (tempDirectory):
 
     return out
 
-    
 def commandsToAddOneEnvironment (fileClass):
+     '''
+     This function will return the commands needed to add one file to the manage project
+     '''
+     levelArg = platformLevelStringWithSlash() + compilerNodeName + '/' + unitTestTestSuiteName() + '/' + fileClass.baseFilename
+     out = []      
+     out.append ('--import ' + fileClass.envFilename)
+     out.append ('--group ' + unitTestGroupName() + ' --add ' + fileClass.baseFilename)
+     out.append ('--migrate ' + levelArg)
+     return out
+    
+def commandsToAddAllEnvironment ():
     '''
-    This function will return the commands needed to add one file to the manage project
+    This function will return the command needed to add all .env files to the
+    manage project
     '''
     
-    levelArg = platformLevelStringWithSlash() + compilerNodeName + '/' + unitTestTestSuiteName() + '/' + fileClass.baseFilename
+    levelArg = platformLevelStringWithSlash() + compilerNodeName + '/' + unitTestTestSuiteName()
 
-    out = []      
-    out.append ('--import ' + fileClass.envFilename)
-    out.append ('--group ' + unitTestGroupName() + ' --add ' + fileClass.baseFilename)
-    out.append ('--migrate ' + levelArg)
-    return out
+    out = ""
+    envScriptDir = os.path.join(originalWorkingDirectory,
+                                vcWorkArea, vcScriptsDirectory)
+    out += '--import-all ' + envScriptDir
+    out += ' --group ' + unitTestGroupName()
+    out += ' --migrate ' + levelArg
+    return [out]
     
     
 def commandsToBuildOneEnvironment (fileClass):
@@ -1288,11 +1680,15 @@ def commandsToAddAndBuildEnvironments (fileClassList):
     '''    
     addCommands = []
     buildCommands = []
-    for enviroCount, fileClass in enumerate(fileClassList):
-        addCommands += commandsToAddOneEnvironment (fileClass)
-        # To make this quicker, we only build maximumUnitTestsToBuild environment
-        if enviroCount < maximumUnitTestsToBuild:
-             buildCommands += commandsToBuildOneEnvironment (fileClass)
+    if (maximumFilesToUnitTest) > 0 and (not vcEnterpriseMode):
+        addCommands += commandsToAddAllEnvironment ()
+    if maximumUnitTestsToBuild>0:
+        for enviroCount, fileClass in enumerate(fileClassList):
+            if vcEnterpriseMode:
+                addCommands += commandsToAddOneEnvironment (fileClass)
+            # To make this quicker, we only build maximumUnitTestsToBuild environment
+            if enviroCount < maximumUnitTestsToBuild:
+                 buildCommands += commandsToBuildOneEnvironment (fileClass)
 
     return addCommands, buildCommands
     
@@ -1353,23 +1749,32 @@ def commentForExecutable():
         returnString += '\n'
     return returnString
  
-         
-            
+def isRunTestCaseLine(original):
+    '''
+    This function checks if the original is a run test case line
+    '''
+    return './' in original and 'nameOfTestExecutable' in original
+
+def convertRunTestCaseLineToAbs(original):
+    '''
+    This function removes the execute string from original
+    '''
+    return original.replace("'./' + ", '')
+
 locationWhereWeRunMakeString = '        self.locationWhereWeRunMake'
 topLevelMakeCommandString    = '        self.topLevelMakeCommand'
 whereWeRunTestsString        = '        self.locationWhereWeRunTests'
 nameOfExecutableString       = '        self.nameOfTestExecutable'
+listOfTestcasesString        = '        self.masterListOfTestCases'
 def convertSystemTestLine (originalLine):
     '''
     This function replaces specific lines in the system_tests.py file based on the 
     values that we retrieved from the vcshell.db during initialization
     '''
+    exe = str()
+    if len(applicationList) > 0:
+        exe = applicationList[0]
 
-    global globalUpdateSystemTestPy
-    
-    if globalUpdateSystemTestPy is False:
-        return originalLine
-        
     if locationWhereWeRunMakeString in originalLine:
         return commonCommentLine + convertOneLine (originalLine, locationWhereWeRunMakeString, 'r"' + topLevelMakeLocation + '"')
     
@@ -1381,11 +1786,18 @@ def convertSystemTestLine (originalLine):
         # location is the first part of the path ...
         location = os.path.dirname(applicationList[0])
         return commentForExecutable() + convertOneLine (originalLine, whereWeRunTestsString, 'r"' + location + '"')
-   
+
+    elif isRunTestCaseLine(originalLine) and os.path.isabs(exe):
+        return convertRunTestCaseLineToAbs(originalLine)
+
     # TBD: We could have multiple applications in the vcdb, for now I am just choosing the first one
-    elif len(applicationList) > 0 and nameOfExecutableString in originalLine:
-        exe = applicationList[0]
+    elif exe and nameOfExecutableString in originalLine:
         return commentForExecutable() + convertOneLine (originalLine, nameOfExecutableString, 'r"' + exe + '"')
+        
+    # TBD: We could have multiple applications in the vcdb, for now I am just choosing the first one
+    elif listOfTestcasesString in originalLine:
+        return ( '        # TBD: Testcase(s) to execute\n' +
+                 convertOneLine (originalLine, listOfTestcasesString, "[TestCase('Test1')]" ) )
         
     else:
         return originalLine
@@ -1413,8 +1825,62 @@ def autoConfigureSystemTest():
         newFile.close()
         shutil.move(newFile.name, systemTestFileName)
     
+def buildCudaEnterpriseProject ( coverageType, tcTimeOut, workArea ):
+    '''
+    This function will create a manage project for a CUDA environment.
+    This is different than typical projects because we have multiple
+    cover environments, one per CUDA architecture
+    '''
+
+    sectionBreak('')  
+    addToSummaryStatus ('Building VectorCAST Project for CUDA ...')
+    startMS = time.time()*1000.0
+    addToSummaryStatus ('   location: ' + os.getcwd())
+
+    # Get the compiler configuration file we do this in all cases, because
+    # we could be using a new CFG file for an existing manage project.
+    # Think about one that had Ada, and now we are adding C
+    getCFGfile ()
     
+    # Create the empty manage project    
+    stdOut, exitCode = runVCcommand ('manage -p' + manageProjectName + ' --create ', True )
+        
+    addToSummaryStatus ('   building project structure nodes')
+        
+    # build a list of all of the coverage projects we just created
+    projectPaths = []
+    for arch in cudaArchitectures:
+        arch_name = cudaArchName ( arch )
+        vcpFile = os.path.join ( workArea, vcCoverDirectory, arch_name, arch_name + '.vcp' )
+        projectPaths.append ( vcpFile )
     
+    # To make this fast, we write all of the manage commands to build the 
+    # basic project structure, into a command file and then call manage.exe 
+    # one time with this file.
+    commands = commandsToBuildProjectTree( projectPaths, coverageType, tcTimeOut, 'CudaSystemTest' )
+
+    # we don't want Manage moving our instrumented source code anywhere
+    commands.append(' --group ST-Group --apply-instrumentation=NEVER')
+
+    stdOut = runManageCommands(manageProjectName, commands)
+        
+    # Auto-configure the system_test.py file
+    autoConfigureSystemTest ()
+
+    # update host environment coverage objects with sizes
+    # based on all architectures
+    updateCudaHostEnvironment ( workArea )
+        
+    # Determine the name of the compiler node, and if we need to build a new one ...
+    nodeCommands =  buildCompilerNode ()
+    stdOut = runManageCommands(manageProjectName, nodeCommands)
+
+    # Now spin though all of the Env files and add those nodes to the manage project
+    if maximumUnitTestsToBuild>0:
+        addEnvFilesToManageProject ()
+
+    endMS = time.time()*1000.0
+    addToSummaryStatus ('   complete (' + getTimeString(endMS-startMS) + ')')
             
 def buildEnterpriseProject (projectMode, coverageType, tcTimeOut):
     '''
@@ -1444,26 +1910,99 @@ def buildEnterpriseProject (projectMode, coverageType, tcTimeOut):
         # To make this fast, we write all of the manage commands to build the 
         # basic project structure, into a command file and then call manage.exe 
         # one time with this file.
-        commands = commandsToBuildProjectTree(coverageProjectName, coverageType, tcTimeOut)
+        projectPaths = []
+        # add coverage project if found
+        if len(coverageProjectName) > 0 and maximumFilesToSystemTest > 0:
+            projectPaths.append (os.path.join ('..',
+                                               vcCoverDirectory,
+                                               coverageProjectName + '.vcp'))
+        commands = commandsToBuildProjectTree( projectPaths, coverageType, tcTimeOut)
         stdOut = runManageCommands(manageProjectName, commands)
         
         # Auto-configure the system_test.py file
         autoConfigureSystemTest ()
-        
 
     # Determine the name of the compiler node, and if we need to build a new one ... 
     nodeCommands =  buildCompilerNode ()
     stdOut = runManageCommands(manageProjectName, nodeCommands)
         
     # Now spin though all of the Env files and add those nodes to the manage project
-    if maximumUnitTestsToBuild>0:
-        addEnvFilesToManageProject ()
+    addEnvFilesToManageProject ()
     
     endMS = time.time()*1000.0
     addToSummaryStatus ('   complete (' + getTimeString(endMS-startMS) + ')')
 
+def findInstrumentedFilename(coverWorkarea, directory, filename):
+    '''
+    This subprogram will look in the appropriate directory for the
+    instrumented version of the source file.
+    If the source filename is "foobar.cu", then the instrumented
+    file will be in the format "foobar.*.cu" (where * is a number
+    that we don't care about).
+    If the file is found, this will return a #include string.
+    If the file is not found, this will return a #error string.
+    '''
+    instrumented, extension = os.path.splitext(filename)
+    fileList = glob.glob (os.path.join (coverWorkarea,
+                                        directory,
+                                        instrumented + '.*' + extension))
+    if len(fileList) == 0:
+        return '#error "no file ' + filename + '"'
+    else:
+        if len(fileList) > 1:
+           addToSummaryStatus("Found multiple versions of " + filename + " in " + directory)
+           addToSummaryStatus("   Using " + fileList[0])
+        return '#include "' + fileList[0] + '"'
 
-    
+
+def buildCudaAggregateFiles(coverWorkarea):
+    '''
+    This function will cycle through all of the source files to create
+    an "instrumented" version that will pull in the file that is
+    instrumented for the appropriate architecture
+    '''
+    addToSummaryStatus ( "Building CUDA aggregation source files" )
+    # need to write each file into a data file so that system_tests.py
+    # can replace the original source with the aggregate version 
+    # after instrumentation
+    list_file = open ( os.path.join ( coverWorkarea, 'vcast.cuda.txt' ) , 'w' )
+    for a_file in listOfAllFiles:
+        filename = os.path.basename(a_file)
+        list_file.write ( a_file + '\n' )
+        the_file = open(a_file + '.vcast.cuda', 'w')
+        # If __CUDA_ARCH__ is defined, we're compiling for GPUs
+        the_file.write ( '#ifdef __CUDA_ARCH__\n' )
+        the_file.write ( '\n' )
+        if_text = '#if '
+        for arch in cudaArchitectures:
+            # only do this for 'real' architectures
+            if arch.isdigit():
+                # determine full path to instrumented file
+                toWrite = findInstrumentedFilename(coverWorkarea, 
+                                                   cudaArchName ( arch ),
+                                                   filename )
+                # for compile switch "arch=compute30", the __CUDA_ARCH__
+                # flag needs to be 300
+                arch_flag = arch + '0'
+                the_file.write ( if_text + cudaArchMacro ( arch, False ) + '\n' )
+                the_file.write ( findInstrumentedFilename(coverWorkarea, 
+                                                          cudaArchName ( arch ),
+                                                          filename) +
+                                 "\n\n" )
+                if_text = '#elif '
+        # end of CPU code
+        the_file.write ( '#endif\n\n' )
+
+        # handle Host architecture ('else' block)
+        the_file.write ( '#else\n' )
+        the_file.write ( findInstrumentedFilename(coverWorkarea, 
+                                                  CUDA_HOST,
+                                                  filename) +
+                         '\n\n' )
+        the_file.write ( '#endif\n' )
+
+        the_file.close()
+
     
 manageProjectNotFound='not-found'
 def findManageProject():
@@ -1525,13 +2064,13 @@ def startAnalytics(vcshellLocation):
     '''
     This function will simply start VC for the manage project
     '''
-    global vcshellDBname
+   
     manageProjectName = findManageProject() 
     if manageProjectName!=manageProjectNotFound:
         projectArgument = '--project=' + manageProjectName
-    elif os.path.isfile (os.path.join (vcshellLocation, vcshellDBname)):
+    elif os.path.isfile (os.path.join (vcshellLocation, vcshellDbName)):
         os.chdir (vcshellLocation)
-        projectArgument = '--vcdb=' + vcshellDBname
+        projectArgument = '--vcdb=%s' % vcshellDbName
     else:
         print 'VCShell Database does not exist'
         return
@@ -1639,7 +2178,9 @@ def addEnviromentsToManage (enviroList):
             # Get the commands needed to do the work
             manageCommands.append ('--group ' + unitTestGroupName() + ' --add ' + os.path.splitext (os.path.basename (enviro))[0])
         elif '.vcp' in enviro:
-            manageCommands.append ('--group ST-Group --add ' + os.path.splitext (os.path.basename (enviro))[0])
+            manageCommands.append ('--group {0} --add {1}'.format(
+                getDefaultSystemTestingGroupName(),
+                os.path.splitext (os.path.basename (enviro))[0]))
                     
     if len (manageCommands) > 0:
         stdOut = runManageCommands(manageProjectName, manageCommands )
@@ -1655,16 +2196,17 @@ def vcmFromEnvironments (projectName, rootDirectory, statusfile, verbose):
     '''
     global summaryStatusFileHandle
     global maximumUnitTestsToBuild
+    global maximumFilesToUnitTest
     global verboseOutput
     global manageProjectName
     global coverageProjectName
     
-    verboseOutput = verbose
+    verboseOutput = (verbose=='True')
     manageProjectName   = projectName + '_project'
     
-    # TBD kind of a kludge, but it might be ok
     coverageProjectName=''
     maximumUnitTestsToBuild = 0
+    maximumFilesToUnitTest = 0
    
     sectionBreak ('')
     summaryStatusFileHandle = open (statusfile, 'w', 1)
@@ -1763,28 +2305,28 @@ def insertEnvCommand (pathToEnvFile, newCommand):
     commonEnvFileEditor (pathToEnvFile=pathToEnvFile, editType='insert', newCommand=newCommand)
     
     
-def buildListOfMainFilesFromDB():
+def buildListOfMainFilesFromDB(vcshellArg):
     '''
     This function will retrieve the list of files whre we should insert c_cover_io ...
-
     '''
+    global cudaHostOnlyFiles
+
     sectionBreak('')
     addToSummaryStatus ('Computing insert locations for c_cover_io.c ...')
     returnList = []
         
-    stdOut, exitCode = runVCcommand ('vcdb ' + vcshellDBarg(force=True) + ' getapps', globalAbortOnError) 
+    stdOut, exitCode = runVCcommand ('vcdb ' + vcshellArg + ' getapps', globalAbortOnError) 
     if 'Apps Not found' in stdOut:
         applicationList = []
     else:
         applicationList = stdOut.rstrip('\n').split('\n')
-    
     
     if len (applicationList)>0:
         
         # Build a list of sets.  One file set for each application
         appFileLists = []
         for app in applicationList: 
-            stdOut, exitCode = runVCcommand ('vcdb ' + vcshellDBarg(force=True) + ' --app=' + app + ' getappfiles', globalAbortOnError) 
+            stdOut, exitCode = runVCcommand ('vcdb ' + vcshellArg + ' --app=' + app + ' getappfiles', globalAbortOnError)
             listOfAppFiles = stdOut.rstrip('\n').split('\n')
             
             # but only consider files that are in the cover project
@@ -1793,9 +2335,9 @@ def buildListOfMainFilesFromDB():
             fileSet = set()
             for file in setOfAppFiles:
                 fileName = os.path.basename (file)
-                fileSet.add (fileName) 
+                if file not in cudaHostOnlyFiles:
+                    fileSet.add (fileName) 
             appFileLists.append (fileSet)
-            
            
         # if we have exactly one application, just return the first filename in the list ...
         if len (appFileLists)==1 and len (appFileLists[0])>0:
@@ -1830,12 +2372,91 @@ def buildListOfMainFilesFromDB():
         
     if len (returnList) > 0:
         addToSummaryStatus ('   file list: ' + ', '.join (returnList))
+    elif len(listOfFiles) > 0:
+        addToSummaryStatus ('   no candidates found - using first file in list')
+        returnList.append ( listOfFiles[0] )
     else:
         addToSummaryStatus ('   no candidates found')
 
     return returnList
-    
 
+'''
+if compilerTemplate contains the word CUDA or
+if it is a CFG file that contains CUDA, then this
+is a CUDA template
+'''
+def isCudaTemplate ( compilerTemplate ):
+    retVal = False
+    if 'CUDA' in compilerTemplate:
+        retVal = True
+    elif os.path.isfile ( compilerTemplate ):
+        theFile = open ( compilerTemplate, 'r')
+        for line in theFile:
+           if 'C_COMPILER_FAMILY_NAME' in line:
+              retVal = 'CUDA' in line
+              break
+        theFile.close()
+    return retVal
+    
+def initializeCudaArtifacts ( compilerTemplate ):
+    '''
+    
+    This function will dump all of the command from the DB, and parse
+    the nvcc command to extract the list of active architectures.
+    
+    An example compile command looks like:
+    nvcc -gencode arch=compute_30,code=sm_30 -gencode arch=compute_35 ...
+    
+    So we want to get all of the 'arch=' arguments ...
+    
+    We don't want to look at every command, because there could be 
+    a lot and they are probably all the same, on the other hand
+    until this is in the field, I wanted and easy way to process all
+    of the lines.  To process, all change maxCommandsToProcess to be 0
+    
+    '''
+    global cudaArchitectures
+    cudaArchitectures = []
+    maxCommandsToProcess = 1
+    commandsProcessed = 0
+
+    # we're return a null list if this is not a CUDA compiler
+    if isCudaTemplate ( compilerTemplate ):
+        addToSummaryStatus ( "Determining CUDA Architectures" )
+        # seed the architectures with 'Host'
+        cudaArchitectures.append ( CUDA_HOST )
+        # get a list of commands
+        lines, exitCode = runVCcommand ('vcdb ' + vcshellDBarg(force=True) + ' dumpcommands' )
+
+        # look for 'nvcc' in output
+        commands = lines.split('\n')
+        for command in commands:
+            # if we find the nvcc command, build our list of architectures
+            if command.find('nvcc') >= 0:
+                parsed = False
+                # split tokens so we can search for each 'arch=' option
+                tokens = command.split(' ')
+                for token in tokens:
+                    if token.startswith('arch'):
+                        # We have something like: arch=compute_30,code=sm_30
+                        # split on the ',' arch string to get rid of 'code' part
+                        tokens = token.split(',')
+                        # find beginning of architecture
+                        underscore = tokens[0].find('_')
+                        if underscore > 0:
+                            parsed = True
+                            arch = tokens[0][underscore+1:]
+                            # add to the list if it's not already there
+                            if arch not in cudaArchitectures:
+                                cudaArchitectures.append(arch)
+                # if we found architecture data, increment our count
+                # if our count matches our maximum, then stop parsing
+                if parsed:
+                    commandsProcessed += 1
+                    if commandsProcessed == maxCommandsToProcess:
+                       break
+
+        cudaArchitectures.sort()
 
 # Case     
 validCoverageTypes=['none', 'statement', 'branch', 'mcdc', 'statement+branch', 'statement+mcdc', 'basis_paths', 'probe_point', 'coupling']
@@ -1851,6 +2472,9 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
     
     All of the created stuff is store in vcast-workarea
     See the sub-functions called from here for details.
+    
+    Notes:
+        inplace has been removed as an option as of AC15, leaving param for backwards compatibility
     '''
 
     global manageProjectName
@@ -1862,19 +2486,17 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
     global verboseOutput
     global vcshellDBlocation
     global vcWorkArea
-    global vcshellDBname
+    global vcshellDbName
     global useParallelInstrumentation
     global useParallelJobs
     global useParallelDestionation
     global useParallelUseInPlace
     
-    print "Automation Controller (AutomataionController.py) : 8/24/2018"
-
     vcWorkArea = vcast_workarea
     
     vcshellDBname = vcDbName     
     
-    if os.path.isfile (os.path.join (vcshellLocation, vcshellDBname)):
+    if os.path.isfile (os.path.join (vcshellLocation, vcshellDbName)):
         vcshellDBlocation = vcshellLocation
     else: 
         vcshellDBlocation = os.getcwd()        
@@ -1886,7 +2508,7 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
     addToSummaryStatus (toolName)
     startMS = time.time()*1000.0   
 
-    verboseOutput = verbose
+    verboseOutput = (verbose=='True')
     
     sectionBreak ('')
     addToSummaryStatus ('Validating configuration choices ...')
@@ -1959,23 +2581,39 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
         os.chdir(startCwd)
 
         
-    else:
-        # We always build an empty coverage project even if the number of 
-        # files to system test is 0, because this allows us to add files to it later.
-        buildCoverageProject (projectMode, inplace)
+    elif maximumFilesToSystemTest > 0:
+        if isCuda():
+            buildCudaCoverageProjects (projectMode,
+                                       vcCoverDirectory)
+        else:
+            # We always build an empty coverage project even if the number of 
+            # files to system test is 0, because this allows us to add files to it later.
+            buildCoverageProject (projectMode=projectMode,
+                                  projectName=coverageProjectName,
+                                  inplace=inplace,
+                                  workingDirectory=vcCoverDirectory)
     
-        # If the caller requested lint analysis
-        if maximumFilesToSystemTest>0 and globalCoverageProjectExists:
-            if maximumFilesToSystemTest>0 and runLint:
-                runLintAnalysis ()
-            
-            if len(listOfMainFiles)==1 and listOfMainFiles[0]==parameterNotSetString:
-                localListOfMainFiles = buildListOfMainFilesFromDB()
-            else:
-                localListOfMainFiles = listOfMainFiles
-            
-            if coverageType != 'none':
-                instrumentFiles (coverageType, localListOfMainFiles)
+    if maximumFilesToSystemTest>0 and globalCoverageProjectExists:
+        
+        if len(listOfMainFiles)==1 and listOfMainFiles[0]==parameterNotSetString:
+            localListOfMainFiles = buildListOfMainFilesFromDB(vcshellDBarg(force=True))
+        else:
+            localListOfMainFiles = listOfMainFiles
+
+        if isCuda():
+            instrumentCudaCoverageProjects ( coverageType,
+                                             runLint,
+                                             localListOfMainFiles, 
+                                             os.path.join ( originalWorkingDirectory,
+                                                            vcWorkArea ) )
+        else:
+            instrumentCoverageProject ( coverageType,
+                                        runLint,
+                                        localListOfMainFiles, 
+                                        os.path.join ( originalWorkingDirectory,
+                                                       vcWorkArea,
+                                                       vcCoverDirectory,
+                                                       coverageProjectName ) )
         
     # Use the IDC EnvCreate to build .env scripts for each file.
     if maximumFilesToUnitTest > 0:
@@ -1983,7 +2621,16 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
         
     # Build the manage project
     os.chdir (os.path.join (originalWorkingDirectory, vcWorkArea, vcManageDirectory ))
-    buildEnterpriseProject (projectMode, coverageType, tcTimeOut)
+
+    if ( isCuda() ) and ( projectMode == 'new' ):
+        buildCudaEnterpriseProject (coverageType,
+                                    tcTimeOut,
+                                    os.path.join (originalWorkingDirectory, vcWorkArea ) )
+        buildCudaAggregateFiles(os.path.join (originalWorkingDirectory,
+                                              vcWorkArea,
+                                              vcCoverDirectory))
+    else:
+        buildEnterpriseProject (projectMode, coverageType, tcTimeOut)
     
     # Add the list of files to the cummulative list of files ...
     newFileList = os.path.join (originalWorkingDirectory, vcWorkArea, listOfFilenamesFile);
@@ -2015,7 +2662,7 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
         toPath = os.path.join (originalWorkingDirectory, vcWorkArea, vcManageDirectory, manageProjectName)
         if os.path.isfile (fromFile):
             shutil.copy (fromFile, toPath)
-            
+
     
 def toolBarDashIcon (workareaBaseDirectory, vcProjectFile):
     '''
@@ -2074,9 +2721,40 @@ def toolBarDashIcon (workareaBaseDirectory, vcProjectFile):
         print 'vcdash args: ' + vcdashArgs
 
     # The startup of vcdash and the web broswer happens back in the GUI.  
+
+def updateSystemTestPy (systemTestFileName, vcshellLocation):
+    global verboseOutput
+
+    verboseOutput = True
+    stdOut, exitCode = runVCcommand ('clicast -lc option vcast_vcdb_flag_string ')
+    setupApplicationBuildGlobals('--db ' + vcshellLocation)
+
+    if len (topLevelMakeCommand) > 0:
+        oldFile = open (systemTestFileName, 'r')
+        newFile = tempfile.NamedTemporaryFile (delete=False)
+
+        for line in oldFile:
+            newFile.write(convertSystemTestLine (line))
+        oldFile.close()
+        newFile.close()
+        shutil.move(newFile.name, systemTestFileName)
+
+def appendCoverIOFilterFn(originalList):
+    return originalList[:]
+
+def appendCoverIO (vcshellFile, coverageProjectName):
+    global summaryStatusFileHandle
+    global verboseOutput
+
+    verboseOutput = True
+    summaryStatusFileHandle = open ('append_cover_io.log', 'w', 1)
+    vcshellArg = '--db=' + vcshellFile;
+    setupGlobalFileListsFromDatabase(appendCoverIOFilterFn, [parameterNotSetString], vcshellArg)
+    localListOfMainFiles = buildListOfMainFilesFromDB(vcshellArg)
+    for file in localListOfMainFiles:
+        stdOut, exitCode = runVCcommand ('clicast -e' + coverageProjectName + ' cover append_cover_io true -u' + file)
+
     
-    
-   
 def enterpriseEnvironmentBuild (workareaBaseDirectory, projectName, scriptFile):
     '''
     This function will build a manage project in the local directory
@@ -2093,6 +2771,13 @@ def enterpriseEnvironmentBuild (workareaBaseDirectory, projectName, scriptFile):
     global summaryStatusFileHandle
     global manageProjectName
     global maximumUnitTestsToBuild
+    global maximumFilesToUnitTest
+    global vcWorkArea
+    global vcEnterpriseMode
+
+    vcEnterpriseMode = True
+    vcWorkArea = workareaBaseDirectory
+    maximumFilesToUnitTest = 0
     
     print 'VectorCAST Enterprise Utility' 
        
@@ -2154,7 +2839,9 @@ def enterpriseEnvironmentBuild (workareaBaseDirectory, projectName, scriptFile):
             manageCommands = []
             manageCommands.append ('--import ' + scriptFile)
             scriptFile = os.path.basename (scriptFile)
-            manageCommands.append ('--group ST-Group --add ' + scriptFile.split('.')[0])
+            manageCommands.append ('--group {0} --add {1}'.format(
+                getDefaultSystemTestingGroupName(),
+                scriptFile.split('.')[0]))
             stdOut = runManageCommands(manageProjectName, manageCommands)
    
                 
@@ -2163,12 +2850,4 @@ def enterpriseEnvironmentBuild (workareaBaseDirectory, projectName, scriptFile):
     else:        
         print 'Script file: "' + scriptFile + '" is invalid'
         print 'Only environment scripts (.env files), and coverage project files (.vcp) are supported'
-        
-        
-     
-
-
-        
-
-
 

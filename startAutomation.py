@@ -16,8 +16,8 @@ import os
 import shutil
 import subprocess
 import traceback
-import sys
-from vector.apps.EnvCreator import AutomationController
+
+from vector.apps.AutomationController import AutomationController
 import vcdb2vcm
 
 
@@ -74,11 +74,11 @@ def setupArgs (toolName):
                            help='Instrument in parallel')    
 
     parser.add_argument ('--parallel-in-place', dest='parallel_use_in_place', action='store_true', default=False,
-                           help='Instrument in parallel')    
+                           help='Instrument in parallel in place')    
 
-    parser.add_argument ('--parallel-jobs', dest='parallel_jobs',  help='Instrument in parallel')    
+    parser.add_argument ('--parallel-jobs', dest='parallel_jobs',  help='Number of parallel jobs to use')    
 
-    parser.add_argument ('--parallel-destination', dest='parallel_destination', help='Instrument in parallel')    
+    parser.add_argument ('--parallel-destination', dest='parallel_destination', help='Destination of parallel build')    
 
     return parser
 
@@ -114,7 +114,7 @@ def clean ():
     and then remove the vcast-workarea directory.  We do this rather than using
     the clicast un-instrument, because this is _MUCH_ faster
     '''
-    workArea = 'vcast-workarea'
+    workArea = vcdb2vcm.VCAST_WORKAREA 
     
     # Un-instument any instrumented source files
     AutomationController.unInstrumentSourceFiles() 
@@ -137,9 +137,13 @@ def performTask (whatToDo, verbose):
             os.chdir (vcdb2vcm.VCSHELL_DB_LOCATION)
         if not os.path.isfile ('CCAST_.CFG'):
             AutomationController.initializeCFGfile (vcdb2vcm.VCAST_COMPILER_CONFIGURATION, vcdb2vcm.VCAST_VCDB_FLAG_STRING)
-        commandToRun = os.path.join (vcInstallDir, 'vcshell') + ' --metrics ' + globalMakeCommand
+        commandToRun = os.path.join (vcInstallDir, 'vcshell') + ' ' + globalMakeCommand + ' --db=%s' % vcdb2vcm.VCSHELL_DB_NAME
         print 'Running: ' + commandToRun
         subprocess.call (commandToRun, shell=True)
+        if vcdb2vcm.VCDB_METRICS:
+            commandToRun = os.path.join (vcInstallDir, 'vcutil')  + ' addmetrics --all --db=%s' % vcdb2vcm.VCSHELL_DB_NAME
+            print 'Running: ' + commandToRun
+            subprocess.call (commandToRun, shell=True)
         os.chdir (originalWorkingDirectory)
 
     elif whatToDo == 'clean':
@@ -151,7 +155,7 @@ def performTask (whatToDo, verbose):
             vcdb2vcm.main(whatToDo, vceBaseDirectory, verbose)
         except Exception as e:
             print e
-            sys.exit("STARTAC: vcdb2vcm error")
+
   
     elif whatToDo == 'vcast':
         # Start VC for the project
@@ -166,7 +170,6 @@ def performTask (whatToDo, verbose):
         AutomationController.disableCoverage()
 
     elif whatToDo == 'enable':
-        # Start Analytics for the project
         AutomationController.enableCoverage()  
 
 
@@ -260,7 +263,8 @@ def main():
 
     if args.parallel_use_in_place:
         AutomationController.useParallelUseInPlace = True
-
+    AutomationController.setVcWorkArea(vcdb2vcm.VCAST_WORKAREA)
+    AutomationController.setVcshellDbName(vcdb2vcm.VCSHELL_DB_NAME)
     if args.interactive:
         interactiveMode(args.verbose)
     elif args.command == 'make' and len (args.makecmd)==0:
@@ -285,9 +289,6 @@ def main():
 
 if __name__ == "__main__":
     try:
-    
-        print "Automation Controller (startAutomation.py) : 8/24/2018"
-        
         main()
     except Exception, err:
         if str(err) != 'VCAST Termination Error':

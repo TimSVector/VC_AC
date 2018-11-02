@@ -18,11 +18,10 @@ import os
 import subprocess
 import sys
 
-from vector.apps.EnvCreator import AutomationController
+from vector.apps.AutomationController import AutomationController
 
 # exit on error
 AutomationController.globalAbortOnError = True
-AutomationController.globalUpdateSystemTestPy = False
 
 #######################################################################################
 #######################################################################################
@@ -64,7 +63,7 @@ MAXIMUM_UNIT_TESTS_TO_BUILD=0
 ### Specify the files to be prioritized when building the VectorCAST project
 ### If you specify ['foo.c', .bar.c', 'main.c'] these will be the first 3
 ### units processed.  If you specify a file limit of 2, we will process foo.c
-### and bar.c in the rist invocation, and main.c next time
+### and bar.c in the first invocation, and main.c next time
 FILES_OF_INTEREST=[AutomationController.parameterNotSetString]
 
 ### FILES_OF_INTEREST=[s.strip() for s in open(PROJECT_NAME + "_filter.list","r").readlines()]
@@ -80,6 +79,15 @@ FILES_OF_INTEREST=[AutomationController.parameterNotSetString]
 ### You must use an absolute path for this file (not relative)
 VCSHELL_DB_LOCATION=os.getcwd()
 
+### This variable allows you to over-ride the default name for the vcShell database 
+VCSHELL_DB_NAME='vcshell.db'
+
+### This variable allows you to run vcutil addmetrics after vcShell database creation
+VCDB_METRICS=False
+
+### This variable allows you to over-ride the default name of the VectorCAST workarea
+VCAST_WORKAREA='vcast-workarea'
+
 ### Code Coverage
 ### Choices are: none, statement, branch, mcdc, statement+branch, statement+mcdc, basis_paths, probe_point, coupling
 VCAST_COVERAGE_TYPE='statement'
@@ -90,9 +98,7 @@ VCAST_COVERAGE_TYPE='statement'
 ENV_FILES_USE_VCDB=True
 
 ### Instrument in place means that the original file foo.c is backed up
-### to foo.c.vcast.bak, and an instrumented foo.c is stoed in its place
-####INSTRUMENT_IN_PLACE=0
-
+### to foo.c.vcast.bak, and an instrumented foo.c is stored in its place
 INSTRUMENT_IN_PLACE=True
 
 ### The VCDB_FLAG_STRING flags will be used as "extra" flags when we call vcdb
@@ -278,22 +284,16 @@ def maxToBuildArg():
     except:
         return sys.maxint
 
-def instrumentInplaceArg ():
-    if INSTRUMENT_IN_PLACE:
-        return '--inplace'
-    else:
-        return ''
 
 def main(whatToDo='build-db', vceBaseDirectory="", verbose=False):
-        
-    print "Automation Controller (vcdb2vcm.py) :8/24/2018"
-
     '''
     Calling arguments:
         command     command-arg      Verbose
         build-vce   root-directory   True|False
     '''
     
+    AutomationController.setVcWorkArea(VCAST_WORKAREA)
+    AutomationController.setVcshellDbName(VCSHELL_DB_NAME)
     if whatToDo=='build-vce':
         AutomationController.vcmFromEnvironments ( \
             projectName=PROJECT_NAME, rootDirectory=vceBaseDirectory,\
@@ -306,13 +306,12 @@ def main(whatToDo='build-db', vceBaseDirectory="", verbose=False):
                  maxToSystemTest=maxToSystemTestArg(), maxToUnitTest=maxToUnitTestArg(), \
                  maxToBuild=maxToBuildArg(), filterFunction=filterFileList, 
                  compilerCFG=VCAST_COMPILER_CONFIGURATION, coverageType=VCAST_COVERAGE_TYPE, \
-                 inplace=instrumentInplaceArg(), \
+                 inplace=INSTRUMENT_IN_PLACE,
                  vcdbFlagString=VCAST_VCDB_FLAG_STRING, \
                  tcTimeOut=TEST_TIMEOUT, includePathOverRide=INCLUDE_PATH_OVERRIDE, \
                  envFileEditor=envFileEditor, statusfile=PROJECT_NAME+'-automation-status.txt', verbose=verbose,
                  filesOfInterest=FILES_OF_INTEREST,vcast_workarea=VCAST_WORKAREA, vcDbName=VCDB_FILENAME, envFilesUseVcdb=ENV_FILES_USE_VCDB)
         except Exception as e:
-            print "VCDB2VCM: Raising exception"
             print e
             raise (e)
             
