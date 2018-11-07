@@ -71,7 +71,7 @@ CUDA_HOST = 'HOST'
 # Controls the output of the stdout from all VectorCAST commands
 verboseOutput = False
 
-# JAL Controls the updating of system_test.py
+# Controls the updating of system_test.py
 globalUpdateSystemTestPy = False
 
 # Controls the failing/continuing of the scripts after a VectorCAST command failes
