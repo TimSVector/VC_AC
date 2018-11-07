@@ -71,6 +71,9 @@ CUDA_HOST = 'HOST'
 # Controls the output of the stdout from all VectorCAST commands
 verboseOutput = False
 
+# JAL Controls the updating of system_test.py
+globalUpdateSystemTestPy = False
+
 # Controls the failing/continuing of the scripts after a VectorCAST command failes
 globalAbortOnError = True
 
@@ -507,8 +510,8 @@ def initialize (compilerCFG, filterFunction, vcdbFlagString, filesOfInterest):
     initializeCFGfile (compilerCFG, vcdbFlagString)
 
     initializeCudaArtifacts ( compilerCFG )
-    
-    addToSummaryStatus ('Validating vcshell.db ...')
+
+    addToSummaryStatus ('Validating %s ...' % vcshellDbName)
     if os.path.isfile (os.path.join (vcshellDBlocation, vcshellDbName)):
         setupGlobalFileListsFromDatabase(filterFunction, filesOfInterest, vcshellDBarg())
 
@@ -1771,6 +1774,10 @@ def convertSystemTestLine (originalLine):
     This function replaces specific lines in the system_tests.py file based on the 
     values that we retrieved from the vcshell.db during initialization
     '''
+    global globalUpdateSystemTestPy
+    if globalUpdateSystemTestPy is False:
+        return originalLine
+		
     exe = str()
     if len(applicationList) > 0:
         exe = applicationList[0]
@@ -2463,7 +2470,7 @@ validCoverageTypes=['none', 'statement', 'branch', 'mcdc', 'statement+branch', '
 def automationController (projectName, vcshellLocation, listOfMainFiles, runLint, maxToSystemTest, maxToUnitTest,\
                           filterFunction, maxToBuild, compilerCFG, coverageType, \
                           inplace, vcdbFlagString, tcTimeOut, includePathOverRide, envFileEditor, statusfile, verbose,
-                          filesOfInterest,vcast_workarea="vcast-workarea",vcDbName="vcshell.db",envFilesUseVcdb=True):
+                          filesOfInterest,envFilesUseVcdb=True):
               
     '''
     This function is passed the configuration data from the vcdb2vcm.py file and 
@@ -2492,9 +2499,6 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
     global useParallelDestionation
     global useParallelUseInPlace
     
-    vcWorkArea = vcast_workarea
-    
-    vcshellDBname = vcDbName     
     
     if os.path.isfile (os.path.join (vcshellLocation, vcshellDbName)):
         vcshellDBlocation = vcshellLocation
@@ -2554,7 +2558,7 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
            para_dest_str = " "
            vc_inst_dir = " vc-inst"
 
-        stdOut, exitCode = runVCcommand ('vcutil instrument --all --coverage=' + coverageType + " --db="+ vcshellDBname + para_jobs_str + para_dest_str, globalAbortOnError)
+        stdOut, exitCode = runVCcommand ('vcutil instrument --all --coverage=' + coverageType + " --db="+ vcshellDbName + para_jobs_str + para_dest_str, globalAbortOnError)
 
         print ("Copying CCAST_.CFG file")
         shutil.copy("CCAST_.CFG",os.path.join (originalWorkingDirectory, vcWorkArea, vcCoverDirectory , "CCAST_.CFG"))
@@ -2580,40 +2584,41 @@ def automationController (projectName, vcshellLocation, listOfMainFiles, runLint
 
         os.chdir(startCwd)
 
+    #not parallel    
+    else:
+        if maximumFilesToSystemTest > 0:
+            if isCuda():
+                buildCudaCoverageProjects (projectMode,
+                                           vcCoverDirectory)
+            else:
+                # We always build an empty coverage project even if the number of 
+                # files to system test is 0, because this allows us to add files to it later.
+                buildCoverageProject (projectMode=projectMode,
+                                      projectName=coverageProjectName,
+                                      inplace=inplace,
+                                      workingDirectory=vcCoverDirectory)
         
-    elif maximumFilesToSystemTest > 0:
-        if isCuda():
-            buildCudaCoverageProjects (projectMode,
-                                       vcCoverDirectory)
-        else:
-            # We always build an empty coverage project even if the number of 
-            # files to system test is 0, because this allows us to add files to it later.
-            buildCoverageProject (projectMode=projectMode,
-                                  projectName=coverageProjectName,
-                                  inplace=inplace,
-                                  workingDirectory=vcCoverDirectory)
-    
-    if maximumFilesToSystemTest>0 and globalCoverageProjectExists:
-        
-        if len(listOfMainFiles)==1 and listOfMainFiles[0]==parameterNotSetString:
-            localListOfMainFiles = buildListOfMainFilesFromDB(vcshellDBarg(force=True))
-        else:
-            localListOfMainFiles = listOfMainFiles
+        if maximumFilesToSystemTest>0 and globalCoverageProjectExists:
+            
+            if len(listOfMainFiles)==1 and listOfMainFiles[0]==parameterNotSetString:
+                localListOfMainFiles = buildListOfMainFilesFromDB(vcshellDBarg(force=True))
+            else:
+                localListOfMainFiles = listOfMainFiles
 
-        if isCuda():
-            instrumentCudaCoverageProjects ( coverageType,
-                                             runLint,
-                                             localListOfMainFiles, 
-                                             os.path.join ( originalWorkingDirectory,
-                                                            vcWorkArea ) )
-        else:
-            instrumentCoverageProject ( coverageType,
-                                        runLint,
-                                        localListOfMainFiles, 
-                                        os.path.join ( originalWorkingDirectory,
-                                                       vcWorkArea,
-                                                       vcCoverDirectory,
-                                                       coverageProjectName ) )
+            if isCuda():
+                instrumentCudaCoverageProjects ( coverageType,
+                                                 runLint,
+                                                 localListOfMainFiles, 
+                                                 os.path.join ( originalWorkingDirectory,
+                                                                vcWorkArea ) )
+            else:
+                instrumentCoverageProject ( coverageType,
+                                            runLint,
+                                            localListOfMainFiles, 
+                                            os.path.join ( originalWorkingDirectory,
+                                                           vcWorkArea,
+                                                           vcCoverDirectory,
+                                                           coverageProjectName ) )
         
     # Use the IDC EnvCreate to build .env scripts for each file.
     if maximumFilesToUnitTest > 0:

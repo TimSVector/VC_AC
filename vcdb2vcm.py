@@ -35,7 +35,7 @@ AutomationController.globalAbortOnError = True
 ### Change this to something meaningful for your project
 PROJECT_NAME=os.environ['EMUL']
 VCAST_WORKAREA=os.environ['VCAST_VMAX_SRC_BASE'] + '/vcast-workarea/' + PROJECT_NAME
-VCDB_FILENAME=os.environ['VCDB_FILENAME']
+VCSHELL_DB_NAME=os.environ['VCDB_FILENAME']
 
 ### VectorCAST Compiler Tag
 ### Must be consistent with the compiler that was used to build the app.
@@ -79,14 +79,11 @@ FILES_OF_INTEREST=[AutomationController.parameterNotSetString]
 ### You must use an absolute path for this file (not relative)
 VCSHELL_DB_LOCATION=os.getcwd()
 
-### This variable allows you to over-ride the default name for the vcShell database 
-VCSHELL_DB_NAME='vcshell.db'
-
 ### This variable allows you to run vcutil addmetrics after vcShell database creation
 VCDB_METRICS=False
 
 ### This variable allows you to over-ride the default name of the VectorCAST workarea
-VCAST_WORKAREA='vcast-workarea'
+# JAL VCAST_WORKAREA='vcast-workarea'
 
 ### Code Coverage
 ### Choices are: none, statement, branch, mcdc, statement+branch, statement+mcdc, basis_paths, probe_point, coupling
@@ -310,7 +307,7 @@ def main(whatToDo='build-db', vceBaseDirectory="", verbose=False):
                  vcdbFlagString=VCAST_VCDB_FLAG_STRING, \
                  tcTimeOut=TEST_TIMEOUT, includePathOverRide=INCLUDE_PATH_OVERRIDE, \
                  envFileEditor=envFileEditor, statusfile=PROJECT_NAME+'-automation-status.txt', verbose=verbose,
-                 filesOfInterest=FILES_OF_INTEREST,vcast_workarea=VCAST_WORKAREA, vcDbName=VCDB_FILENAME, envFilesUseVcdb=ENV_FILES_USE_VCDB)
+                 filesOfInterest=FILES_OF_INTEREST, envFilesUseVcdb=ENV_FILES_USE_VCDB)
         except Exception as e:
             print e
             raise (e)
